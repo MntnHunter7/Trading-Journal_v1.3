@@ -46,7 +46,6 @@
         >
           <span class="tab-icon">📊</span>
           <span class="tab-label">Dashboard</span>
-          <span class="tab-badge" id="tabBadgeDashboard">0</span>
         </button>
         <button
           id="tabBtnHistory"
@@ -59,7 +58,18 @@
         >
           <span class="tab-icon">📋</span>
           <span class="tab-label">Trade-Historie</span>
-          <span class="tab-badge" id="tabBadgeHistory">0</span>
+        </button>
+        <button
+          id="tabBtnCalendar"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="tabCalendar"
+          data-tab="calendar"
+          class="tab-btn"
+        >
+          <span class="tab-icon">📅</span>
+          <span class="tab-label">Kalender</span>
         </button>
       </nav>
     </div>
@@ -75,7 +85,7 @@
       role="tabpanel"
       aria-labelledby="tabBtnDashboard"
     >
-      <!-- KPI Grid (5 Kacheln – kein "Trades Gesamt") -->
+      <!-- KPI Grid -->
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         <div class="kpi-card">
           <div class="kpi-label">Gesamt-PnL</div>
@@ -187,7 +197,6 @@
                   <div id="uploadMeta" class="upload-meta"></div>
                 </div>
               </div>
-              <input type="hidden" id="fImageData" />
             </div>
           </div>
 
@@ -253,6 +262,77 @@
             </thead>
             <tbody id="tradesBody"></tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- Tab 3: Kalender ---------- -->
+    <section
+      id="tabCalendar"
+      class="tab-panel hidden"
+      role="tabpanel"
+      aria-labelledby="tabBtnCalendar"
+    >
+      <div class="card p-5">
+        <!-- Kalender-Header mit Navigation -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <button id="calPrevBtn" type="button" class="btn btn-secondary" title="Vorheriger Monat">
+              ‹
+            </button>
+            <button id="calTodayBtn" type="button" class="btn btn-ghost text-xs">Heute</button>
+            <button id="calNextBtn" type="button" class="btn btn-secondary" title="Nächster Monat">
+              ›
+            </button>
+          </div>
+
+          <h2 id="calTitle" class="text-lg font-semibold">–</h2>
+
+          <div class="cal-legend">
+            <span class="cal-legend-item">
+              <span class="cal-legend-dot cal-legend-dot-win"></span> Profit
+            </span>
+            <span class="cal-legend-item">
+              <span class="cal-legend-dot cal-legend-dot-loss"></span> Verlust
+            </span>
+            <span class="cal-legend-item">
+              <span class="cal-legend-dot cal-legend-dot-neutral"></span> Neutral
+            </span>
+          </div>
+        </div>
+
+        <!-- Wochentags-Köpfe -->
+        <div class="cal-grid cal-grid-head">
+          <div class="cal-head">Mo</div>
+          <div class="cal-head">Di</div>
+          <div class="cal-head">Mi</div>
+          <div class="cal-head">Do</div>
+          <div class="cal-head">Fr</div>
+          <div class="cal-head">Sa</div>
+          <div class="cal-head">So</div>
+        </div>
+
+        <!-- Tages-Grid -->
+        <div id="calGrid" class="cal-grid"></div>
+
+        <!-- Monats-Zusammenfassung -->
+        <div class="cal-summary">
+          <div class="cal-summary-item">
+            <div class="cal-summary-label">Monats-PnL</div>
+            <div id="calMonthPnl" class="cal-summary-value">$0.00</div>
+          </div>
+          <div class="cal-summary-item">
+            <div class="cal-summary-label">Profit-Tage</div>
+            <div id="calWinDays" class="cal-summary-value text-emerald-400">0</div>
+          </div>
+          <div class="cal-summary-item">
+            <div class="cal-summary-label">Verlust-Tage</div>
+            <div id="calLossDays" class="cal-summary-value text-rose-400">0</div>
+          </div>
+          <div class="cal-summary-item">
+            <div class="cal-summary-label">Trades im Monat</div>
+            <div id="calTradeCount" class="cal-summary-value">0</div>
+          </div>
         </div>
       </div>
     </section>
