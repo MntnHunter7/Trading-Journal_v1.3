@@ -1,6 +1,5 @@
 /* ============================================================
-   Trading Journal – Ergänzende Styles (Tailwind CDN übernimmt
-   Utility-Klassen, hier kommen Komponenten-Klassen dazu)
+   Trading Journal – Ergänzende Styles & Tab-States
    ============================================================ */
 
 * {
@@ -10,6 +9,105 @@
 
 html, body {
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---------- Tab-Navigation ---------- */
+.tab-nav {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #1e293b;
+  margin-top: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  border-radius: 8px 8px 0 0;
+}
+
+.tab-btn:hover {
+  color: #e2e8f0;
+  background: rgba(30, 41, 59, 0.35);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+}
+
+.tab-btn-active {
+  color: #34d399;
+  border-bottom-color: #10b981;
+  background: rgba(16, 185, 129, 0.06);
+  font-weight: 600;
+}
+
+.tab-btn-active:hover {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.10);
+}
+
+.tab-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tab-label {
+  line-height: 1;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  padding: 0 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #1e293b;
+  color: #94a3b8;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab-btn-active .tab-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+/* ---------- Tab-Panels ---------- */
+.tab-panel {
+  animation: fadeIn 0.22s ease;
+}
+
+.tab-panel.hidden {
+  display: none !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ---------- Karten ---------- */
@@ -316,4 +414,16 @@ input[type="number"] {
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
+}
+
+/* ---------- Responsive Tab-Anpassungen ---------- */
+@media (max-width: 480px) {
+  .tab-btn {
+    padding: 0.6rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  .tab-icon {
+    font-size: 0.9rem;
+  }
 }
