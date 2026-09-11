@@ -1,6 +1,7 @@
 /* ============================================================
    Trading Journal – Anwendungslogik
    Vanilla JS · localStorage · JSON Import/Export · Tab-Switching
+   Bild-Upload via FileReader + Canvas-Kompression
    ============================================================ */
 
 (function () {
@@ -8,6 +9,10 @@
 
   const STORAGE_KEY = 'trading_journal_trades_v1';
   const ACTIVE_TAB_KEY = 'trading_journal_active_tab_v1';
+
+  // Bild-Kompression
+  const IMG_MAX_DIM = 1400;        // längste Kante in px
+  const IMG_JPEG_QUALITY = 0.75;   // 0..1
 
   /* =========================================================
      Utilities
@@ -56,6 +61,13 @@
     return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
   };
 
+  const fmtBytes = (bytes) => {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
   const fmtDateTime = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
@@ -75,13 +87,67 @@
   };
 
   /* =========================================================
+     Bild-Handling: File → Base64 (komprimiert)
+     ========================================================= */
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Bild konnte nicht geladen werden.'));
+      img.src = src;
+    });
+  }
+
+  async function compressImage(file, maxDim = IMG_MAX_DIM, quality = IMG_JPEG_QUALITY) {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Datei ist kein Bild.');
+    }
+
+    const originalDataUrl = await readFileAsDataURL(file);
+    const img = await loadImage(originalDataUrl);
+
+    let { width, height } = img;
+    const scale = Math.min(1, maxDim / Math.max(width, height));
+    const targetW = Math.max(1, Math.round(width * scale));
+    const targetH = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+
+    // Weißer Hintergrund, damit transparente PNGs beim JPEG nicht schwarz werden
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetW, targetH);
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+
+    const compressed = canvas.toDataURL('image/jpeg', quality);
+
+    return {
+      dataUrl: compressed,
+      originalSize: file.size,
+      compressedSize: Math.round((compressed.length * 3) / 4) // grobe Schätzung
+    };
+  }
+
+  /* =========================================================
      State
      ========================================================= */
   const state = {
     trades: [],
     filters: { ticker: '', type: '', setup: '' },
     editingId: null,
-    activeTab: 'dashboard'
+    activeTab: 'dashboard',
+    pendingImage: null // { dataUrl, meta }
   };
 
   /* =========================================================
@@ -101,9 +167,15 @@
   function saveTrades() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trades));
+      return true;
     } catch (err) {
       console.warn('Konnte Trades nicht speichern:', err);
-      toast('Speichern fehlgeschlagen', 'error');
+      if (err && err.name === 'QuotaExceededError') {
+        toast('Speicher voll! Bitte alte Trades oder Bilder löschen.', 'error');
+      } else {
+        toast('Speichern fehlgeschlagen', 'error');
+      }
+      return false;
     }
   }
 
@@ -129,14 +201,12 @@
     state.activeTab = tabName;
     saveActiveTab();
 
-    // Buttons
     $$('.tab-btn').forEach((btn) => {
       const isActive = btn.getAttribute('data-tab') === tabName;
       btn.classList.toggle('tab-btn-active', isActive);
       btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
 
-    // Panels
     const panelDashboard = $('#tabDashboard');
     const panelHistory = $('#tabHistory');
 
@@ -146,7 +216,6 @@
     } else {
       panelDashboard.classList.add('hidden');
       panelHistory.classList.remove('hidden');
-      // Tabelle beim Wechsel neu rendern (falls Filter gesetzt sind)
       renderTable();
     }
   }
@@ -154,8 +223,7 @@
   function handleTabClick(e) {
     const btn = e.target.closest('.tab-btn');
     if (!btn) return;
-    const tab = btn.getAttribute('data-tab');
-    switchTab(tab);
+    switchTab(btn.getAttribute('data-tab'));
   }
 
   function handleTabKeydown(e) {
@@ -224,7 +292,6 @@
     const avgWin = wins.length ? grossProfit / wins.length : 0;
     const avgLoss = losses.length ? -grossLoss / losses.length : 0;
 
-    // Max Drawdown über kumulierte Equity-Kurve (nach Datum sortiert)
     const sorted = [...list].sort(
       (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
     );
@@ -266,8 +333,9 @@
         : k.totalPnl < 0 ? 'text-rose-400'
           : 'text-slate-100');
 
-    const totalPnlSub = $('#kpiTotalPnlSub');
-    totalPnlSub.textContent = k.count ? `${k.count} Trade${k.count === 1 ? '' : 's'}` : 'Noch keine Trades';
+    $('#kpiTotalPnlSub').textContent = k.count
+      ? `${k.wins}W / ${k.losses}L`
+      : 'Noch keine Trades';
 
     $('#kpiWinRate').textContent = k.count ? k.winRate.toFixed(1) + '%' : '–';
     $('#kpiWinRateSub').textContent = `${k.wins}W / ${k.losses}L`;
@@ -290,9 +358,6 @@
     $('#kpiAvgLoss').textContent = k.losses ? fmtMoney(k.avgLoss) : '–';
   }
 
-  /* =========================================================
-     Rendering – Tab-Badges
-     ========================================================= */
   function renderTabBadges() {
     const count = state.trades.length;
     const b1 = $('#tabBadgeDashboard');
@@ -347,7 +412,7 @@
       : `${shown} von ${total} Trade${total === 1 ? '' : 's'} angezeigt`;
 
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="13" class="text-center py-10 text-slate-500">Keine Trades gefunden.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="14" class="text-center py-10 text-slate-500">Keine Trades gefunden.</td></tr>`;
       return;
     }
 
@@ -365,9 +430,16 @@
       const typeLabel = t.type === 'long' ? 'LONG' : 'SHORT';
 
       const chartUrl = safeUrl(t.chartLink);
-      const chartIcon = chartUrl
-        ? `<a href="${escapeHtml(chartUrl)}" target="_blank" rel="noopener noreferrer" class="link" title="Chart öffnen">🔗</a>`
+      const linkIcon = chartUrl
+        ? `<a href="${escapeHtml(chartUrl)}" target="_blank" rel="noopener noreferrer" class="link" title="Chart-Link öffnen">🔗</a>`
         : '';
+
+      const hasImage = typeof t.image === 'string' && t.image.startsWith('data:image/');
+      const thumbCell = hasImage
+        ? `<button type="button" class="thumb-btn" data-action="show-image" title="Bild vergrößern">
+             <img src="${t.image}" alt="Chart" loading="lazy" />
+           </button>`
+        : `<span class="thumb-empty">–</span>`;
 
       const stopCell = t.stopLoss ? num(t.stopLoss).toFixed(4) : '–';
       const rCell = t.stopLoss ? fmtR(m.rMultiple) : '–';
@@ -385,8 +457,9 @@
         <td class="text-right tabular-nums ${pnlClass}">${fmtPct(m.pnlPct)}</td>
         <td class="text-right tabular-nums ${pnlClass}">${rCell}</td>
         <td class="text-center"><span class="${statusBadge}">${m.status}</span></td>
+        <td class="text-center">${thumbCell}</td>
         <td class="text-center whitespace-nowrap">
-          ${chartIcon}
+          ${linkIcon}
           <button type="button" class="btn-icon" data-action="edit" title="Bearbeiten">✎</button>
           <button type="button" class="btn-icon text-rose-400" data-action="delete" title="Löschen">✕</button>
         </td>
@@ -408,7 +481,7 @@
       position: num($('#fPosition').value),
       stopLoss: num($('#fStop').value),
       notes: $('#fNotes').value.trim(),
-      chartLink: $('#fChart').value.trim()
+      chartLink: ''
     };
   }
 
@@ -449,6 +522,72 @@
   }
 
   /* =========================================================
+     Bild-Upload-Steuerung
+     ========================================================= */
+  async function handleImageSelect(file) {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast('Nur Bilddateien erlaubt.', 'error');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast('Datei zu groß (max. 15 MB).', 'error');
+      return;
+    }
+
+    try {
+      toast('Bild wird verarbeitet…', 'success');
+      const result = await compressImage(file);
+
+      state.pendingImage = {
+        dataUrl: result.dataUrl,
+        originalSize: result.originalSize,
+        compressedSize: result.compressedSize
+      };
+
+      renderImagePreview();
+      toast('Bild hinzugefügt', 'success');
+    } catch (err) {
+      console.warn('Bildfehler:', err);
+      toast('Bild konnte nicht verarbeitet werden.', 'error');
+    }
+  }
+
+  function renderImagePreview() {
+    const zone = $('#uploadZone');
+    const empty = $('#uploadEmpty');
+    const previewWrap = $('#uploadPreview');
+    const img = $('#uploadPreviewImg');
+    const meta = $('#uploadMeta');
+
+    if (state.pendingImage && state.pendingImage.dataUrl) {
+      img.src = state.pendingImage.dataUrl;
+      const orig = state.pendingImage.originalSize || 0;
+      const comp = state.pendingImage.compressedSize || 0;
+      meta.textContent = comp
+        ? `${fmtBytes(orig)} → ${fmtBytes(comp)}`
+        : '';
+      empty.classList.add('hidden');
+      previewWrap.classList.remove('hidden');
+      zone.classList.add('has-image');
+    } else {
+      img.removeAttribute('src');
+      meta.textContent = '';
+      empty.classList.remove('hidden');
+      previewWrap.classList.add('hidden');
+      zone.classList.remove('has-image');
+    }
+  }
+
+  function removeImage() {
+    state.pendingImage = null;
+    const fileInput = $('#fImage');
+    if (fileInput) fileInput.value = '';
+    renderImagePreview();
+  }
+
+  /* =========================================================
      Formular-Submit
      ========================================================= */
   function handleSubmit(e) {
@@ -462,11 +601,21 @@
     if (!data.exit) { toast('Bitte Exit-Preis angeben.', 'error'); return; }
     if (!data.position) { toast('Bitte Positionsgröße angeben.', 'error'); return; }
 
+    const imageData = state.pendingImage ? state.pendingImage.dataUrl : null;
+
     if (state.editingId) {
       const idx = state.trades.findIndex((t) => t.id === state.editingId);
       if (idx >= 0) {
-        state.trades[idx] = { ...state.trades[idx], ...data, updatedAt: new Date().toISOString() };
-        toast('Trade aktualisiert', 'success');
+        const prev = state.trades[idx];
+        state.trades[idx] = {
+          ...prev,
+          ...data,
+          // Bild nur überschreiben, wenn bewusst gesetzt oder entfernt
+          image: imageData,
+          updatedAt: new Date().toISOString()
+        };
+        const ok = saveTrades();
+        toast(ok ? 'Trade aktualisiert' : 'Speichern fehlgeschlagen', ok ? 'success' : 'error');
       }
       state.editingId = null;
       updateFormMode();
@@ -474,19 +623,25 @@
       const trade = {
         id: uid(),
         ...data,
+        image: imageData,
         createdAt: new Date().toISOString()
       };
       state.trades.push(trade);
+      const ok = saveTrades();
+      if (!ok) {
+        // Bei Quota-Fehler den Trade wieder entfernen
+        state.trades.pop();
+        return;
+      }
       toast('Trade gespeichert', 'success');
     }
 
-    saveTrades();
     resetForm();
     renderAll();
   }
 
   /* =========================================================
-     Formular-Modus (Neu / Bearbeiten)
+     Formular-Modus
      ========================================================= */
   function updateFormMode() {
     const title = $('#formTitle');
@@ -509,7 +664,9 @@
     form.reset();
     $('#fDateTime').value = toLocalDatetimeInput();
     state.editingId = null;
+    state.pendingImage = null;
     updateFormMode();
+    renderImagePreview();
     updatePreview();
   }
 
@@ -531,15 +688,25 @@
     $('#fPosition').value = t.position ?? '';
     $('#fStop').value = t.stopLoss ?? '';
     $('#fNotes').value = t.notes || '';
-    $('#fChart').value = t.chartLink || '';
+
+    // Bild laden
+    if (typeof t.image === 'string' && t.image.startsWith('data:image/')) {
+      state.pendingImage = {
+        dataUrl: t.image,
+        originalSize: 0,
+        compressedSize: Math.round((t.image.length * 3) / 4)
+      };
+    } else {
+      state.pendingImage = null;
+    }
+    const fileInput = $('#fImage');
+    if (fileInput) fileInput.value = '';
+    renderImagePreview();
 
     updateFormMode();
     updatePreview();
-
-    // Auf Dashboard-Tab wechseln, damit der Nutzer das Formular sieht
     switchTab('dashboard');
 
-    // Nach dem Tab-Wechsel scrollen (kleiner Delay für Animation)
     setTimeout(() => {
       const form = $('#tradeForm');
       if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -567,6 +734,36 @@
   }
 
   /* =========================================================
+     Bild-Modal
+     ========================================================= */
+  function showImageModal(trade) {
+    if (!trade) return;
+    const modal = $('#imageModal');
+    const img = $('#modalImage');
+    const title = $('#modalTitle');
+    const sub = $('#modalSub');
+
+    if (!trade.image || !trade.image.startsWith('data:image/')) return;
+
+    img.src = trade.image;
+    title.textContent = `${trade.ticker || 'Chart'} · ${fmtDateTime(trade.datetime)}`;
+    sub.textContent = `${trade.type === 'short' ? 'SHORT' : 'LONG'}${trade.setup ? ' · ' + trade.setup : ''}`;
+
+    modal.classList.add('modal-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+  }
+
+  function hideImageModal() {
+    const modal = $('#imageModal');
+    const img = $('#modalImage');
+    modal.classList.remove('modal-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+    setTimeout(() => { img.removeAttribute('src'); }, 200);
+  }
+
+  /* =========================================================
      Event-Handler – Tabelle
      ========================================================= */
   function handleTableClick(e) {
@@ -582,6 +779,10 @@
     const action = btn.getAttribute('data-action');
     if (action === 'edit') startEdit(id);
     else if (action === 'delete') deleteTrade(id);
+    else if (action === 'show-image') {
+      const t = state.trades.find((x) => x.id === id);
+      if (t) showImageModal(t);
+    }
   }
 
   /* =========================================================
@@ -612,7 +813,7 @@
     }
 
     const payload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       count: state.trades.length,
       trades: state.trades
@@ -647,24 +848,30 @@
         else if (parsed && Array.isArray(parsed.trades)) imported = parsed.trades;
         else throw new Error('Ungültiges Format: "trades" Array fehlt.');
 
-        // Validierung und Normalisierung
         const cleaned = imported
           .filter((t) => t && typeof t === 'object')
-          .map((t) => ({
-            id: typeof t.id === 'string' && t.id ? t.id : uid(),
-            datetime: t.datetime || toLocalDatetimeInput(),
-            ticker: String(t.ticker || '').toUpperCase(),
-            type: t.type === 'short' ? 'short' : 'long',
-            setup: String(t.setup || ''),
-            entry: num(t.entry),
-            exit: num(t.exit),
-            position: num(t.position),
-            stopLoss: num(t.stopLoss),
-            notes: String(t.notes || ''),
-            chartLink: String(t.chartLink || ''),
-            createdAt: t.createdAt || new Date().toISOString(),
-            updatedAt: t.updatedAt || null
-          }))
+          .map((t) => {
+            const img = typeof t.image === 'string' && t.image.startsWith('data:image/')
+              ? t.image
+              : null;
+
+            return {
+              id: typeof t.id === 'string' && t.id ? t.id : uid(),
+              datetime: t.datetime || toLocalDatetimeInput(),
+              ticker: String(t.ticker || '').toUpperCase(),
+              type: t.type === 'short' ? 'short' : 'long',
+              setup: String(t.setup || ''),
+              entry: num(t.entry),
+              exit: num(t.exit),
+              position: num(t.position),
+              stopLoss: num(t.stopLoss),
+              notes: String(t.notes || ''),
+              chartLink: '',
+              image: img,
+              createdAt: t.createdAt || new Date().toISOString(),
+              updatedAt: t.updatedAt || null
+            };
+          })
           .filter((t) => t.ticker && (t.entry || t.exit));
 
         if (!cleaned.length) {
@@ -680,6 +887,8 @@
           );
         }
 
+        const previous = state.trades;
+
         if (replace) {
           state.trades = cleaned;
         } else {
@@ -688,8 +897,15 @@
           state.trades = Array.from(map.values());
         }
 
-        saveTrades();
+        // Speichern testen – bei Quota-Fehler zurückrollen
+        const success = saveTrades();
+        if (!success) {
+          state.trades = previous;
+          return;
+        }
+
         state.editingId = null;
+        state.pendingImage = null;
         resetForm();
         renderAll();
 
@@ -760,7 +976,6 @@
       tabNav.addEventListener('keydown', handleTabKeydown);
     }
 
-    // Tab-Klicks einzeln absichern (falls Nav-Wrapper mal fehlt)
     $$('.tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -768,7 +983,7 @@
       });
     });
 
-    // Tabellen-Events (Delegation)
+    // Tabelle
     $('#tradesBody').addEventListener('click', handleTableClick);
 
     // Filter
@@ -785,14 +1000,69 @@
       e.target.value = '';
     });
 
+    // Bild-Upload
+    const zone = $('#uploadZone');
+    const fileInput = $('#fImage');
+
+    zone.addEventListener('click', (e) => {
+      // Klick auf den "Entfernen"-Button darf nicht den File-Dialog öffnen
+      if (e.target.closest('#removeImageBtn')) return;
+      if (zone.classList.contains('has-image')) return;
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) handleImageSelect(file);
+      e.target.value = '';
+    });
+
+    // Drag & Drop
+    ['dragenter', 'dragover'].forEach((evt) => {
+      zone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!zone.classList.contains('has-image')) zone.classList.add('dragging');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((evt) => {
+      zone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove('dragging');
+      });
+    });
+
+    zone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.files || !dt.files.length) return;
+      handleImageSelect(dt.files[0]);
+    });
+
+    $('#removeImageBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeImage();
+    });
+
+    // Modal
+    $('#modalCloseBtn').addEventListener('click', hideImageModal);
+    $('#imageModal').addEventListener('click', (e) => {
+      if (e.target.closest('[data-close-modal]') || e.target.id === 'imageModal') {
+        hideImageModal();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideImageModal();
+    });
+
     // Datum vorbelegen
     $('#fDateTime').value = toLocalDatetimeInput();
 
     updateFormMode();
+    renderImagePreview();
     renderAll();
     updatePreview();
-
-    // Initialen Tab setzen (persistiert aus localStorage)
     switchTab(state.activeTab || 'dashboard');
   }
 
