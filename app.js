@@ -1,12 +1,13 @@
 /* ============================================================
    Trading Journal – Anwendungslogik
-   Vanilla JS · localStorage · JSON Import/Export
+   Vanilla JS · localStorage · JSON Import/Export · Tab-Switching
    ============================================================ */
 
 (function () {
   'use strict';
 
   const STORAGE_KEY = 'trading_journal_trades_v1';
+  const ACTIVE_TAB_KEY = 'trading_journal_active_tab_v1';
 
   /* =========================================================
      Utilities
@@ -79,7 +80,8 @@
   const state = {
     trades: [],
     filters: { ticker: '', type: '', setup: '' },
-    editingId: null
+    editingId: null,
+    activeTab: 'dashboard'
   };
 
   /* =========================================================
@@ -103,6 +105,78 @@
       console.warn('Konnte Trades nicht speichern:', err);
       toast('Speichern fehlgeschlagen', 'error');
     }
+  }
+
+  function loadActiveTab() {
+    try {
+      const t = localStorage.getItem(ACTIVE_TAB_KEY);
+      if (t === 'dashboard' || t === 'history') state.activeTab = t;
+    } catch (err) { /* ignore */ }
+  }
+
+  function saveActiveTab() {
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, state.activeTab);
+    } catch (err) { /* ignore */ }
+  }
+
+  /* =========================================================
+     Tab-Switching
+     ========================================================= */
+  function switchTab(tabName) {
+    if (tabName !== 'dashboard' && tabName !== 'history') return;
+
+    state.activeTab = tabName;
+    saveActiveTab();
+
+    // Buttons
+    $$('.tab-btn').forEach((btn) => {
+      const isActive = btn.getAttribute('data-tab') === tabName;
+      btn.classList.toggle('tab-btn-active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    // Panels
+    const panelDashboard = $('#tabDashboard');
+    const panelHistory = $('#tabHistory');
+
+    if (tabName === 'dashboard') {
+      panelDashboard.classList.remove('hidden');
+      panelHistory.classList.add('hidden');
+    } else {
+      panelDashboard.classList.add('hidden');
+      panelHistory.classList.remove('hidden');
+      // Tabelle beim Wechsel neu rendern (falls Filter gesetzt sind)
+      renderTable();
+    }
+  }
+
+  function handleTabClick(e) {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    const tab = btn.getAttribute('data-tab');
+    switchTab(tab);
+  }
+
+  function handleTabKeydown(e) {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+
+    e.preventDefault();
+    const buttons = $$('.tab-btn');
+    const currentIdx = buttons.indexOf(btn);
+    let nextIdx = currentIdx;
+
+    if (e.key === 'ArrowLeft') nextIdx = (currentIdx - 1 + buttons.length) % buttons.length;
+    else if (e.key === 'ArrowRight') nextIdx = (currentIdx + 1) % buttons.length;
+    else if (e.key === 'Home') nextIdx = 0;
+    else if (e.key === 'End') nextIdx = buttons.length - 1;
+
+    buttons[nextIdx].focus();
+    switchTab(buttons[nextIdx].getAttribute('data-tab'));
   }
 
   /* =========================================================
@@ -214,6 +288,17 @@
 
     $('#kpiAvgWin').textContent = k.wins ? fmtMoney(k.avgWin) : '–';
     $('#kpiAvgLoss').textContent = k.losses ? fmtMoney(k.avgLoss) : '–';
+  }
+
+  /* =========================================================
+     Rendering – Tab-Badges
+     ========================================================= */
+  function renderTabBadges() {
+    const count = state.trades.length;
+    const b1 = $('#tabBadgeDashboard');
+    const b2 = $('#tabBadgeHistory');
+    if (b1) b1.textContent = String(count);
+    if (b2) b2.textContent = String(count);
   }
 
   /* =========================================================
@@ -451,8 +536,15 @@
     updateFormMode();
     updatePreview();
 
-    $('#tradeForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    $('#fTicker').focus();
+    // Auf Dashboard-Tab wechseln, damit der Nutzer das Formular sieht
+    switchTab('dashboard');
+
+    // Nach dem Tab-Wechsel scrollen (kleiner Delay für Animation)
+    setTimeout(() => {
+      const form = $('#tradeForm');
+      if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('#fTicker').focus();
+    }, 80);
   }
 
   function deleteTrade(id) {
@@ -640,6 +732,7 @@
      ========================================================= */
   function renderAll() {
     renderKPIs();
+    renderTabBadges();
     renderSetupFilter();
     renderTable();
   }
@@ -649,6 +742,7 @@
      ========================================================= */
   function init() {
     loadTrades();
+    loadActiveTab();
 
     // Formular-Events
     const form = $('#tradeForm');
@@ -658,6 +752,21 @@
 
     $('#resetFormBtn').addEventListener('click', resetForm);
     $('#cancelEditBtn').addEventListener('click', resetForm);
+
+    // Tab-Navigation
+    const tabNav = document.querySelector('.tab-nav');
+    if (tabNav) {
+      tabNav.addEventListener('click', handleTabClick);
+      tabNav.addEventListener('keydown', handleTabKeydown);
+    }
+
+    // Tab-Klicks einzeln absichern (falls Nav-Wrapper mal fehlt)
+    $$('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab(btn.getAttribute('data-tab'));
+      });
+    });
 
     // Tabellen-Events (Delegation)
     $('#tradesBody').addEventListener('click', handleTableClick);
@@ -682,6 +791,9 @@
     updateFormMode();
     renderAll();
     updatePreview();
+
+    // Initialen Tab setzen (persistiert aus localStorage)
+    switchTab(state.activeTab || 'dashboard');
   }
 
   if (document.readyState === 'loading') {
