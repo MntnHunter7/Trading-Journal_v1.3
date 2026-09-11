@@ -10,7 +10,7 @@
 <body class="bg-slate-950 text-slate-100 min-h-screen">
 
   <!-- ===================== Header ===================== -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-20">
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center font-bold text-slate-900 text-sm">
@@ -75,7 +75,7 @@
       role="tabpanel"
       aria-labelledby="tabBtnDashboard"
     >
-      <!-- KPI Grid -->
+      <!-- KPI Grid (5 Kacheln – kein "Trades Gesamt") -->
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         <div class="kpi-card">
           <div class="kpi-label">Gesamt-PnL</div>
@@ -168,9 +168,26 @@
               <label class="label" for="fNotes">Notizen</label>
               <textarea id="fNotes" name="notes" class="textarea" rows="3" placeholder="These, Emotion, Kontext..."></textarea>
             </div>
+
             <div class="lg:col-span-2">
-              <label class="label" for="fChart">Chart-Link</label>
-              <input type="url" id="fChart" name="chartLink" class="input" placeholder="https://..." />
+              <label class="label">Chart-Screenshot</label>
+              <div class="upload-zone" id="uploadZone">
+                <input type="file" id="fImage" accept="image/*" class="hidden" />
+                <div id="uploadEmpty" class="upload-empty">
+                  <span class="upload-icon">🖼️</span>
+                  <div class="upload-text">
+                    <span class="text-emerald-400 font-medium">Bild auswählen</span>
+                    <span class="text-slate-500"> oder hierher ziehen</span>
+                  </div>
+                  <div class="upload-hint">PNG, JPG, WEBP · wird automatisch komprimiert</div>
+                </div>
+                <div id="uploadPreview" class="upload-preview hidden">
+                  <img id="uploadPreviewImg" alt="Vorschau" />
+                  <button type="button" id="removeImageBtn" class="upload-remove" title="Bild entfernen">✕</button>
+                  <div id="uploadMeta" class="upload-meta"></div>
+                </div>
+              </div>
+              <input type="hidden" id="fImageData" />
             </div>
           </div>
 
@@ -230,6 +247,7 @@
                 <th class="text-right">PnL %</th>
                 <th class="text-right">R</th>
                 <th class="text-center">Status</th>
+                <th class="text-center">Chart</th>
                 <th class="text-center">Aktion</th>
               </tr>
             </thead>
@@ -240,6 +258,23 @@
     </section>
 
   </main>
+
+  <!-- ===================== Bild-Modal ===================== -->
+  <div id="imageModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="true"></div>
+    <div class="modal-body">
+      <div class="modal-header">
+        <div>
+          <div id="modalTitle" class="text-sm font-semibold text-slate-100">Chart-Ansicht</div>
+          <div id="modalSub" class="text-xs text-slate-400"></div>
+        </div>
+        <button type="button" id="modalCloseBtn" class="btn-icon text-xl" title="Schließen">✕</button>
+      </div>
+      <div class="modal-content">
+        <img id="modalImage" alt="Chart" />
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
 
