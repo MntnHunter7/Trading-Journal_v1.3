@@ -1,5 +1,5 @@
 /* ============================================================
-   Trading Journal – Ergänzende Styles & Tab-States
+   Trading Journal – Ergänzende Styles & Tab-States & Kalender
    ============================================================ */
 
 * {
@@ -11,9 +11,7 @@ html, body {
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-body.modal-open {
-  overflow: hidden;
-}
+body.modal-open { overflow: hidden; }
 
 /* ---------- Tab-Navigation ---------- */
 .tab-nav {
@@ -25,9 +23,7 @@ body.modal-open {
   scrollbar-width: none;
 }
 
-.tab-nav::-webkit-scrollbar {
-  display: none;
-}
+.tab-nav::-webkit-scrollbar { display: none; }
 
 .tab-btn {
   display: inline-flex;
@@ -73,35 +69,9 @@ body.modal-open {
 .tab-icon { font-size: 1rem; line-height: 1; }
 .tab-label { line-height: 1; }
 
-.tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  height: 1.25rem;
-  padding: 0 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  border-radius: 999px;
-  background: #1e293b;
-  color: #94a3b8;
-  line-height: 1;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.tab-btn-active .tab-badge {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-}
-
 /* ---------- Tab-Panels ---------- */
-.tab-panel {
-  animation: fadeIn 0.22s ease;
-}
-
-.tab-panel.hidden {
-  display: none !important;
-}
+.tab-panel { animation: fadeIn 0.22s ease; }
+.tab-panel.hidden { display: none !important; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -128,9 +98,7 @@ body.modal-open {
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
-.kpi-card:hover {
-  border-color: rgba(16, 185, 129, 0.4);
-}
+.kpi-card:hover { border-color: rgba(16, 185, 129, 0.4); }
 
 .kpi-label {
   font-size: 0.7rem;
@@ -148,10 +116,7 @@ body.modal-open {
   line-height: 1.15;
 }
 
-.kpi-sub {
-  font-size: 0.7rem;
-  color: #64748b;
-}
+.kpi-sub { font-size: 0.7rem; color: #64748b; }
 
 /* ---------- Formularfelder ---------- */
 .label {
@@ -179,9 +144,7 @@ body.modal-open {
 }
 
 .input::placeholder,
-.textarea::placeholder {
-  color: #475569;
-}
+.textarea::placeholder { color: #475569; }
 
 .input:focus,
 .select:focus,
@@ -191,10 +154,7 @@ body.modal-open {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
 }
 
-.textarea {
-  resize: vertical;
-  min-height: 72px;
-}
+.textarea { resize: vertical; min-height: 72px; }
 
 select.select {
   appearance: none;
@@ -244,20 +204,9 @@ select.select {
   user-select: none;
 }
 
-.upload-icon {
-  font-size: 1.6rem;
-  line-height: 1;
-  opacity: 0.85;
-}
-
-.upload-text {
-  font-size: 0.85rem;
-}
-
-.upload-hint {
-  font-size: 0.7rem;
-  color: #64748b;
-}
+.upload-icon { font-size: 1.6rem; line-height: 1; opacity: 0.85; }
+.upload-text { font-size: 0.85rem; }
+.upload-hint { font-size: 0.7rem; color: #64748b; }
 
 .upload-preview {
   position: relative;
@@ -296,10 +245,7 @@ select.select {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.upload-remove:hover {
-  background: #4c0519;
-  color: #fecdd3;
-}
+.upload-remove:hover { background: #4c0519; color: #fecdd3; }
 
 .upload-meta {
   position: absolute;
@@ -333,11 +279,7 @@ select.select {
 
 .btn:active { transform: translateY(1px); }
 
-.btn-primary {
-  background: #10b981;
-  color: #022c22;
-  font-weight: 600;
-}
+.btn-primary { background: #10b981; color: #022c22; font-weight: 600; }
 .btn-primary:hover { background: #34d399; }
 
 .btn-secondary {
@@ -345,20 +287,14 @@ select.select {
   color: #e2e8f0;
   border-color: #334155;
 }
-.btn-secondary:hover {
-  background: #334155;
-  border-color: #475569;
-}
+.btn-secondary:hover { background: #334155; border-color: #475569; }
 
 .btn-ghost {
   background: transparent;
   color: #94a3b8;
   border-color: transparent;
 }
-.btn-ghost:hover {
-  color: #e2e8f0;
-  background: #1e293b;
-}
+.btn-ghost:hover { color: #e2e8f0; background: #1e293b; }
 
 .btn-icon {
   background: transparent;
@@ -373,10 +309,7 @@ select.select {
   line-height: 1;
 }
 
-.btn-icon:hover {
-  background: #1e293b;
-  color: #e2e8f0;
-}
+.btn-icon:hover { background: #1e293b; color: #e2e8f0; }
 
 /* ---------- Badges ---------- */
 .badge {
@@ -397,11 +330,7 @@ select.select {
 .badge-short{ background: rgba(251, 146, 60, 0.15); color: #fb923c; }
 
 /* ---------- Tabelle ---------- */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 
 thead th {
   text-align: left;
@@ -438,10 +367,7 @@ tbody tr:hover { background: rgba(30, 41, 59, 0.35); }
   line-height: 0;
 }
 
-.thumb-btn:hover {
-  border-color: #10b981;
-  transform: scale(1.05);
-}
+.thumb-btn:hover { border-color: #10b981; transform: scale(1.05); }
 
 .thumb-btn img {
   width: 44px;
@@ -472,6 +398,163 @@ tbody tr:hover { background: rgba(30, 41, 59, 0.35); }
 }
 .link:hover { background: #1e293b; }
 
+/* ============================================================
+   KALENDER
+   ============================================================ */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cal-grid-head { margin-bottom: 4px; }
+
+.cal-head {
+  text-align: center;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 700;
+  padding: 0.4rem 0;
+}
+
+.cal-cell {
+  position: relative;
+  min-height: 76px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  background: #0b1220;
+  padding: 0.4rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-cell:hover {
+  border-color: #334155;
+}
+
+.cal-cell-empty {
+  background: transparent;
+  border: 1px solid transparent;
+  pointer-events: none;
+}
+
+.cal-cell-today {
+  outline: 1px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 0;
+}
+
+.cal-cell-win {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.cal-cell-win .cal-day-num,
+.cal-cell-win .cal-day-pnl {
+  color: #34d399;
+}
+
+.cal-cell-loss {
+  background: rgba(244, 63, 94, 0.10);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.cal-cell-loss .cal-day-num,
+.cal-cell-loss .cal-day-pnl {
+  color: #fb7185;
+}
+
+.cal-day-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  line-height: 1;
+}
+
+.cal-day-pnl {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  word-break: break-all;
+}
+
+.cal-day-count {
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.cal-legend-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cal-legend-dot-win     { background: rgba(16, 185, 129, 0.75); }
+.cal-legend-dot-loss    { background: rgba(244, 63, 94, 0.75); }
+.cal-legend-dot-neutral { background: #334155; }
+
+.cal-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #1e293b;
+}
+
+@media (min-width: 640px) {
+  .cal-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.cal-summary-item {
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+}
+
+.cal-summary-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.cal-summary-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 640px) {
+  .cal-cell { min-height: 64px; padding: 0.3rem 0.35rem; }
+  .cal-day-pnl { font-size: 0.68rem; }
+}
+
 /* ---------- Modal ---------- */
 .modal {
   position: fixed;
@@ -483,10 +566,7 @@ tbody tr:hover { background: rgba(30, 41, 59, 0.35); }
   padding: 1rem;
 }
 
-.modal.modal-open {
-  display: flex;
-  animation: fadeIn 0.18s ease;
-}
+.modal.modal-open { display: flex; animation: fadeIn 0.18s ease; }
 
 .modal-backdrop {
   position: absolute;
@@ -563,17 +643,8 @@ tbody tr:hover { background: rgba(30, 41, 59, 0.35); }
   pointer-events: auto;
 }
 
-.toast-error {
-  border-color: #be123c;
-  background: #4c0519;
-  color: #fecdd3;
-}
-
-.toast-success {
-  border-color: #047857;
-  background: #022c22;
-  color: #a7f3d0;
-}
+.toast-error { border-color: #be123c; background: #4c0519; color: #fecdd3; }
+.toast-success { border-color: #047857; background: #022c22; color: #a7f3d0; }
 
 /* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -581,7 +652,7 @@ tbody tr:hover { background: rgba(30, 41, 59, 0.35); }
 ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #334155; }
 
-/* ---------- Number Inputs ohne Spinner ---------- */
+/* ---------- Number Inputs ---------- */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -596,11 +667,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
-  .tab-btn {
-    padding: 0.6rem 0.7rem;
-    font-size: 0.8rem;
-  }
+  .tab-btn { padding: 0.6rem 0.7rem; font-size: 0.8rem; }
   .tab-icon { font-size: 0.9rem; }
   .kpi-value { font-size: 1.3rem; }
   .modal-content img { max-height: 70vh; }
+  .cal-legend { display: none; }
 }
