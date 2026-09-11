@@ -1,7 +1,7 @@
 /* ============================================================
    Trading Journal – Anwendungslogik
-   Vanilla JS · localStorage · JSON Import/Export · Tab-Switching
-   Bild-Upload via FileReader + Canvas-Kompression
+   Vanilla JS · localStorage · JSON Import/Export · 3-Tab-Switching
+   Bild-Upload (Base64 + Canvas-Kompression) · Monats-Kalender
    ============================================================ */
 
 (function () {
@@ -10,9 +10,14 @@
   const STORAGE_KEY = 'trading_journal_trades_v1';
   const ACTIVE_TAB_KEY = 'trading_journal_active_tab_v1';
 
-  // Bild-Kompression
-  const IMG_MAX_DIM = 1400;        // längste Kante in px
-  const IMG_JPEG_QUALITY = 0.75;   // 0..1
+  const IMG_MAX_DIM = 1400;
+  const IMG_JPEG_QUALITY = 0.75;
+
+  const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const MONTHS = [
+    'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+  ];
 
   /* =========================================================
      Utilities
@@ -28,6 +33,8 @@
   const uid = () =>
     Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+  const pad2 = (n) => String(n).padStart(2, '0');
+
   const escapeHtml = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({
       '&': '&amp;',
@@ -36,15 +43,6 @@
       '"': '&quot;',
       "'": '&#39;'
     }[c]));
-
-  const safeUrl = (u) => {
-    if (!u) return '';
-    try {
-      const url = new URL(u, window.location.href);
-      if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
-    } catch (err) { /* ignore */ }
-    return '';
-  };
 
   const fmtMoney = (v) => {
     if (!Number.isFinite(v)) return '$0.00';
@@ -81,13 +79,18 @@
     });
   };
 
-  const toLocalDatetimeInput = (d = new Date()) => {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const toLocalDatetimeInput = (d = new Date()) =>
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+  // Liefert YYYY-MM-DD aus einem Datetime-String oder Date
+  const toDateKey = (input) => {
+    const d = input instanceof Date ? input : new Date(input);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   };
 
   /* =========================================================
-     Bild-Handling: File → Base64 (komprimiert)
+     Bild-Handling
      ========================================================= */
   function readFileAsDataURL(file) {
     return new Promise((resolve, reject) => {
@@ -108,14 +111,12 @@
   }
 
   async function compressImage(file, maxDim = IMG_MAX_DIM, quality = IMG_JPEG_QUALITY) {
-    if (!file.type.startsWith('image/')) {
-      throw new Error('Datei ist kein Bild.');
-    }
+    if (!file.type.startsWith('image/')) throw new Error('Datei ist kein Bild.');
 
     const originalDataUrl = await readFileAsDataURL(file);
     const img = await loadImage(originalDataUrl);
 
-    let { width, height } = img;
+    const { width, height } = img;
     const scale = Math.min(1, maxDim / Math.max(width, height));
     const targetW = Math.max(1, Math.round(width * scale));
     const targetH = Math.max(1, Math.round(height * scale));
@@ -124,8 +125,6 @@
     canvas.width = targetW;
     canvas.height = targetH;
     const ctx = canvas.getContext('2d');
-
-    // Weißer Hintergrund, damit transparente PNGs beim JPEG nicht schwarz werden
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, targetW, targetH);
     ctx.drawImage(img, 0, 0, targetW, targetH);
@@ -135,7 +134,7 @@
     return {
       dataUrl: compressed,
       originalSize: file.size,
-      compressedSize: Math.round((compressed.length * 3) / 4) // grobe Schätzung
+      compressedSize: Math.round((compressed.length * 3) / 4)
     };
   }
 
@@ -147,7 +146,11 @@
     filters: { ticker: '', type: '', setup: '' },
     editingId: null,
     activeTab: 'dashboard',
-    pendingImage: null // { dataUrl, meta }
+    pendingImage: null,
+    calendar: {
+      // Erster Tag des aktuell angezeigten Monats
+      cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    }
   };
 
   /* =========================================================
@@ -182,7 +185,9 @@
   function loadActiveTab() {
     try {
       const t = localStorage.getItem(ACTIVE_TAB_KEY);
-      if (t === 'dashboard' || t === 'history') state.activeTab = t;
+      if (t === 'dashboard' || t === 'history' || t === 'calendar') {
+        state.activeTab = t;
+      }
     } catch (err) { /* ignore */ }
   }
 
@@ -195,8 +200,10 @@
   /* =========================================================
      Tab-Switching
      ========================================================= */
+  const VALID_TABS = ['dashboard', 'history', 'calendar'];
+
   function switchTab(tabName) {
-    if (tabName !== 'dashboard' && tabName !== 'history') return;
+    if (!VALID_TABS.includes(tabName)) return;
 
     state.activeTab = tabName;
     saveActiveTab();
@@ -207,17 +214,14 @@
       btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
 
-    const panelDashboard = $('#tabDashboard');
-    const panelHistory = $('#tabHistory');
+    VALID_TABS.forEach((tab) => {
+      const panel = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+      if (!panel) return;
+      panel.classList.toggle('hidden', tab !== tabName);
+    });
 
-    if (tabName === 'dashboard') {
-      panelDashboard.classList.remove('hidden');
-      panelHistory.classList.add('hidden');
-    } else {
-      panelDashboard.classList.add('hidden');
-      panelHistory.classList.remove('hidden');
-      renderTable();
-    }
+    if (tabName === 'history') renderTable();
+    if (tabName === 'calendar') renderCalendar();
   }
 
   function handleTabClick(e) {
@@ -229,7 +233,6 @@
   function handleTabKeydown(e) {
     const btn = e.target.closest('.tab-btn');
     if (!btn) return;
-
     const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
     if (!keys.includes(e.key)) return;
 
@@ -248,7 +251,7 @@
   }
 
   /* =========================================================
-     Berechnungen
+     Berechnungen – einzelner Trade
      ========================================================= */
   function computeTrade(t) {
     const entry = num(t.entry);
@@ -271,12 +274,14 @@
     return { pnl, pnlPct, rMultiple, status, dir };
   }
 
+  /* =========================================================
+     Berechnungen – KPIs
+     ========================================================= */
   function computeKPIs(list) {
     const n = list.length;
     const metrics = list.map(computeTrade);
 
     const totalPnl = metrics.reduce((s, m) => s + m.pnl, 0);
-
     const wins = metrics.filter((m) => m.status === 'WIN');
     const losses = metrics.filter((m) => m.status === 'LOSS');
 
@@ -308,15 +313,8 @@
     }
 
     return {
-      totalPnl,
-      winRate,
-      profitFactor,
-      maxDD,
-      avgWin,
-      avgLoss,
-      count: n,
-      wins: wins.length,
-      losses: losses.length
+      totalPnl, winRate, profitFactor, maxDD, avgWin, avgLoss,
+      count: n, wins: wins.length, losses: losses.length
     };
   }
 
@@ -334,7 +332,7 @@
           : 'text-slate-100');
 
     $('#kpiTotalPnlSub').textContent = k.count
-      ? `${k.wins}W / ${k.losses}L`
+      ? `${k.count} Trade${k.count === 1 ? '' : 's'}`
       : 'Noch keine Trades';
 
     $('#kpiWinRate').textContent = k.count ? k.winRate.toFixed(1) + '%' : '–';
@@ -356,14 +354,6 @@
 
     $('#kpiAvgWin').textContent = k.wins ? fmtMoney(k.avgWin) : '–';
     $('#kpiAvgLoss').textContent = k.losses ? fmtMoney(k.avgLoss) : '–';
-  }
-
-  function renderTabBadges() {
-    const count = state.trades.length;
-    const b1 = $('#tabBadgeDashboard');
-    const b2 = $('#tabBadgeHistory');
-    if (b1) b1.textContent = String(count);
-    if (b2) b2.textContent = String(count);
   }
 
   /* =========================================================
@@ -389,7 +379,6 @@
      ========================================================= */
   function getFilteredTrades() {
     const f = state.filters;
-
     return state.trades
       .filter((t) => {
         if (f.ticker && !(t.ticker || '').toLowerCase().includes(f.ticker.toLowerCase())) return false;
@@ -402,6 +391,8 @@
 
   function renderTable() {
     const tbody = $('#tradesBody');
+    if (!tbody) return;
+
     const list = getFilteredTrades();
 
     const countEl = $('#tableCount');
@@ -429,11 +420,6 @@
       const typeBadge = t.type === 'long' ? 'badge badge-long' : 'badge badge-short';
       const typeLabel = t.type === 'long' ? 'LONG' : 'SHORT';
 
-      const chartUrl = safeUrl(t.chartLink);
-      const linkIcon = chartUrl
-        ? `<a href="${escapeHtml(chartUrl)}" target="_blank" rel="noopener noreferrer" class="link" title="Chart-Link öffnen">🔗</a>`
-        : '';
-
       const hasImage = typeof t.image === 'string' && t.image.startsWith('data:image/');
       const thumbCell = hasImage
         ? `<button type="button" class="thumb-btn" data-action="show-image" title="Bild vergrößern">
@@ -459,7 +445,6 @@
         <td class="text-center"><span class="${statusBadge}">${m.status}</span></td>
         <td class="text-center">${thumbCell}</td>
         <td class="text-center whitespace-nowrap">
-          ${linkIcon}
           <button type="button" class="btn-icon" data-action="edit" title="Bearbeiten">✎</button>
           <button type="button" class="btn-icon text-rose-400" data-action="delete" title="Löschen">✕</button>
         </td>
@@ -468,7 +453,142 @@
   }
 
   /* =========================================================
-     Formular-Lesen & Live-Preview
+     Rendering – Kalender
+     ========================================================= */
+  function getMonthTrades(year, monthIdx) {
+    // monthIdx: 0-11
+    return state.trades.filter((t) => {
+      const d = new Date(t.datetime);
+      if (isNaN(d.getTime())) return false;
+      return d.getFullYear() === year && d.getMonth() === monthIdx;
+    });
+  }
+
+  function buildDayMap(trades) {
+    // Map<YYYY-MM-DD, { pnl:number, count:number }>
+    const map = new Map();
+    for (const t of trades) {
+      const key = toDateKey(t.datetime);
+      if (!key) continue;
+      const { pnl } = computeTrade(t);
+      const prev = map.get(key) || { pnl: 0, count: 0 };
+      map.set(key, { pnl: prev.pnl + pnl, count: prev.count + 1 });
+    }
+    return map;
+  }
+
+  function renderCalendar() {
+    const grid = $('#calGrid');
+    if (!grid) return;
+
+    const cursor = state.calendar.cursor;
+    const year = cursor.getFullYear();
+    const monthIdx = cursor.getMonth();
+
+    // Titel
+    $('#calTitle').textContent = `${MONTHS[monthIdx]} ${year}`;
+
+    // Wochentag des 1. des Monats (0=So ... 6=Sa), wir brauchen Mo=0
+    const firstOfMonth = new Date(year, monthIdx, 1);
+    const jsDow = firstOfMonth.getDay(); // 0=So..6=Sa
+    const offset = (jsDow + 6) % 7;      // Mo=0, Di=1, ..., So=6
+
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+
+    // Trades des Monats
+    const monthTrades = getMonthTrades(year, monthIdx);
+    const dayMap = buildDayMap(monthTrades);
+
+    // Heutiger Tag als Key
+    const todayKey = toDateKey(new Date());
+
+    // Zellen bauen
+    let html = '';
+
+    // Vorlauf: leere Zellen
+    for (let i = 0; i < offset; i++) {
+      html += `<div class="cal-cell cal-cell-empty"></div>`;
+    }
+
+    // Tage des Monats
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${year}-${pad2(monthIdx + 1)}-${pad2(day)}`;
+      const entry = dayMap.get(dateKey);
+      const isToday = dateKey === todayKey;
+
+      let cellClass = 'cal-cell';
+      let pnlLabel = '';
+      let countLabel = '';
+
+      if (entry) {
+        if (entry.pnl > 0.0001) cellClass += ' cal-cell-win';
+        else if (entry.pnl < -0.0001) cellClass += ' cal-cell-loss';
+        pnlLabel = fmtMoney(entry.pnl);
+        countLabel = `${entry.count} Trade${entry.count === 1 ? '' : 's'}`;
+      } else {
+        pnlLabel = '–';
+        countLabel = '';
+      }
+
+      if (isToday) cellClass += ' cal-cell-today';
+
+      html += `<div class="${cellClass}" title="${escapeHtml(dateKey)}${entry ? ' · ' + escapeHtml(fmtMoney(entry.pnl)) : ''}">
+        <div class="cal-day-num">${day}</div>
+        <div>
+          <div class="cal-day-pnl">${pnlLabel}</div>
+          ${countLabel ? `<div class="cal-day-count">${countLabel}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    // Auffüllen der letzten Woche auf volle 7er-Reihe
+    const totalCells = offset + daysInMonth;
+    const remainder = totalCells % 7;
+    if (remainder !== 0) {
+      for (let i = 0; i < 7 - remainder; i++) {
+        html += `<div class="cal-cell cal-cell-empty"></div>`;
+      }
+    }
+
+    grid.innerHTML = html;
+
+    // Monats-Zusammenfassung
+    const monthPnl = monthTrades.reduce((s, t) => s + computeTrade(t).pnl, 0);
+    const winDays = Array.from(dayMap.values()).filter((v) => v.pnl > 0.0001).length;
+    const lossDays = Array.from(dayMap.values()).filter((v) => v.pnl < -0.0001).length;
+
+    const monthPnlEl = $('#calMonthPnl');
+    monthPnlEl.textContent = fmtMoney(monthPnl);
+    monthPnlEl.className = 'cal-summary-value ' +
+      (monthPnl > 0 ? 'text-emerald-400'
+        : monthPnl < 0 ? 'text-rose-400'
+          : '');
+
+    $('#calWinDays').textContent = String(winDays);
+    $('#calLossDays').textContent = String(lossDays);
+    $('#calTradeCount').textContent = String(monthTrades.length);
+  }
+
+  function calPrevMonth() {
+    const c = state.calendar.cursor;
+    state.calendar.cursor = new Date(c.getFullYear(), c.getMonth() - 1, 1);
+    renderCalendar();
+  }
+
+  function calNextMonth() {
+    const c = state.calendar.cursor;
+    state.calendar.cursor = new Date(c.getFullYear(), c.getMonth() + 1, 1);
+    renderCalendar();
+  }
+
+  function calToday() {
+    const now = new Date();
+    state.calendar.cursor = new Date(now.getFullYear(), now.getMonth(), 1);
+    renderCalendar();
+  }
+
+  /* =========================================================
+     Formular – Lesen & Live-Preview
      ========================================================= */
   function readForm() {
     return {
@@ -480,13 +600,13 @@
       exit: num($('#fExit').value),
       position: num($('#fPosition').value),
       stopLoss: num($('#fStop').value),
-      notes: $('#fNotes').value.trim(),
-      chartLink: ''
+      notes: $('#fNotes').value.trim()
     };
   }
 
   function updatePreview() {
     const preview = $('#preview');
+    if (!preview) return;
 
     const entryRaw = $('#fEntry').value;
     const exitRaw = $('#fExit').value;
@@ -561,13 +681,13 @@
     const img = $('#uploadPreviewImg');
     const meta = $('#uploadMeta');
 
+    if (!zone) return;
+
     if (state.pendingImage && state.pendingImage.dataUrl) {
       img.src = state.pendingImage.dataUrl;
       const orig = state.pendingImage.originalSize || 0;
       const comp = state.pendingImage.compressedSize || 0;
-      meta.textContent = comp
-        ? `${fmtBytes(orig)} → ${fmtBytes(comp)}`
-        : '';
+      meta.textContent = comp ? `${fmtBytes(orig)} → ${fmtBytes(comp)}` : '';
       empty.classList.add('hidden');
       previewWrap.classList.remove('hidden');
       zone.classList.add('has-image');
@@ -610,7 +730,6 @@
         state.trades[idx] = {
           ...prev,
           ...data,
-          // Bild nur überschreiben, wenn bewusst gesetzt oder entfernt
           image: imageData,
           updatedAt: new Date().toISOString()
         };
@@ -628,11 +747,7 @@
       };
       state.trades.push(trade);
       const ok = saveTrades();
-      if (!ok) {
-        // Bei Quota-Fehler den Trade wieder entfernen
-        state.trades.pop();
-        return;
-      }
+      if (!ok) { state.trades.pop(); return; }
       toast('Trade gespeichert', 'success');
     }
 
@@ -689,7 +804,6 @@
     $('#fStop').value = t.stopLoss ?? '';
     $('#fNotes').value = t.notes || '';
 
-    // Bild laden
     if (typeof t.image === 'string' && t.image.startsWith('data:image/')) {
       state.pendingImage = {
         dataUrl: t.image,
@@ -757,6 +871,7 @@
   function hideImageModal() {
     const modal = $('#imageModal');
     const img = $('#modalImage');
+    if (!modal) return;
     modal.classList.remove('modal-open');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
@@ -769,10 +884,8 @@
   function handleTableClick(e) {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
-
     const row = btn.closest('tr');
     if (!row) return;
-
     const id = row.getAttribute('data-id');
     if (!id) return;
 
@@ -813,7 +926,7 @@
     }
 
     const payload = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       count: state.trades.length,
       trades: state.trades
@@ -866,7 +979,6 @@
               position: num(t.position),
               stopLoss: num(t.stopLoss),
               notes: String(t.notes || ''),
-              chartLink: '',
               image: img,
               createdAt: t.createdAt || new Date().toISOString(),
               updatedAt: t.updatedAt || null
@@ -897,7 +1009,6 @@
           state.trades = Array.from(map.values());
         }
 
-        // Speichern testen – bei Quota-Fehler zurückrollen
         const success = saveTrades();
         if (!success) {
           state.trades = previous;
@@ -928,19 +1039,13 @@
   function toast(msg, type) {
     const el = $('#toast');
     if (!el) return;
-
     el.textContent = msg;
-
     let cls = 'toast toast-show';
     if (type === 'error') cls += ' toast-error';
     else if (type === 'success') cls += ' toast-success';
-
     el.className = cls;
-
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      el.className = 'toast';
-    }, 2600);
+    toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
   }
 
   /* =========================================================
@@ -948,9 +1053,9 @@
      ========================================================= */
   function renderAll() {
     renderKPIs();
-    renderTabBadges();
     renderSetupFilter();
     renderTable();
+    renderCalendar();
   }
 
   /* =========================================================
@@ -960,7 +1065,7 @@
     loadTrades();
     loadActiveTab();
 
-    // Formular-Events
+    // Formular
     const form = $('#tradeForm');
     form.addEventListener('submit', handleSubmit);
     form.addEventListener('input', updatePreview);
@@ -969,7 +1074,7 @@
     $('#resetFormBtn').addEventListener('click', resetForm);
     $('#cancelEditBtn').addEventListener('click', resetForm);
 
-    // Tab-Navigation
+    // Tabs
     const tabNav = document.querySelector('.tab-nav');
     if (tabNav) {
       tabNav.addEventListener('click', handleTabClick);
@@ -1005,7 +1110,6 @@
     const fileInput = $('#fImage');
 
     zone.addEventListener('click', (e) => {
-      // Klick auf den "Entfernen"-Button darf nicht den File-Dialog öffnen
       if (e.target.closest('#removeImageBtn')) return;
       if (zone.classList.contains('has-image')) return;
       fileInput.click();
@@ -1017,7 +1121,6 @@
       e.target.value = '';
     });
 
-    // Drag & Drop
     ['dragenter', 'dragover'].forEach((evt) => {
       zone.addEventListener(evt, (e) => {
         e.preventDefault();
@@ -1044,6 +1147,11 @@
       e.stopPropagation();
       removeImage();
     });
+
+    // Kalender
+    $('#calPrevBtn').addEventListener('click', calPrevMonth);
+    $('#calNextBtn').addEventListener('click', calNextMonth);
+    $('#calTodayBtn').addEventListener('click', calToday);
 
     // Modal
     $('#modalCloseBtn').addEventListener('click', hideImageModal);
