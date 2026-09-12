@@ -3,209 +3,204 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
   <title>Trading Journal</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+<body>
 
-  <!-- ===================== Header ===================== -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center font-bold text-slate-900 text-sm">
-          TJ
-        </div>
-        <div>
-          <h1 class="text-lg font-semibold leading-tight">Trading Journal</h1>
-          <p class="text-xs text-slate-400">Lokal · Schnell · Datenschutzfreundlich</p>
+  <!-- ================= HEADER ================= -->
+  <header class="app-header">
+    <div class="shell header-inner">
+      <div class="brand">
+        <span class="brand-mark">TJ</span>
+        <div class="brand-text">
+          <span class="brand-name">Trading Journal</span>
+          <span class="brand-sub mono">LOCAL · OFFLINE · v1</span>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <button id="exportBtn" type="button" class="btn btn-secondary">
-          <span>⬇</span> Export JSON
+
+      <div class="header-actions">
+        <button id="exportBtn" type="button" class="btn">
+          <span class="btn-icon">↓</span> Export
         </button>
-        <label class="btn btn-secondary cursor-pointer">
-          <span>⬆</span> Import JSON
-          <input type="file" id="importInput" accept="application/json,.json" class="hidden" />
+        <label class="btn">
+          <span class="btn-icon">↑</span> Import
+          <input type="file" id="importInput" accept="application/json,.json" hidden />
         </label>
       </div>
     </div>
 
-    <!-- ===================== Tab-Navigation ===================== -->
-    <div class="max-w-7xl mx-auto px-4">
-      <nav class="tab-nav" role="tablist" aria-label="Hauptnavigation">
+    <!-- ================= TABS ================= -->
+    <nav class="tabs" role="tablist" aria-label="Hauptnavigation">
+      <div class="shell tabs-inner">
         <button
           id="tabBtnDashboard"
+          class="tab tab-active"
           type="button"
           role="tab"
           aria-selected="true"
           aria-controls="tabDashboard"
           data-tab="dashboard"
-          class="tab-btn tab-btn-active"
         >
-          <span class="tab-icon">📊</span>
-          <span class="tab-label">Dashboard</span>
+          <span class="tab-i">01</span>
+          <span class="tab-t">Dashboard</span>
         </button>
         <button
           id="tabBtnHistory"
+          class="tab"
           type="button"
           role="tab"
           aria-selected="false"
           aria-controls="tabHistory"
           data-tab="history"
-          class="tab-btn"
         >
-          <span class="tab-icon">📋</span>
-          <span class="tab-label">Trade-Historie</span>
+          <span class="tab-i">02</span>
+          <span class="tab-t">Historie</span>
         </button>
         <button
           id="tabBtnCalendar"
+          class="tab"
           type="button"
           role="tab"
           aria-selected="false"
           aria-controls="tabCalendar"
           data-tab="calendar"
-          class="tab-btn"
         >
-          <span class="tab-icon">📅</span>
-          <span class="tab-label">Kalender</span>
+          <span class="tab-i">03</span>
+          <span class="tab-t">Kalender</span>
         </button>
-      </nav>
-    </div>
+      </div>
+    </nav>
   </header>
 
-  <!-- ===================== Main ===================== -->
-  <main class="max-w-7xl mx-auto px-4 py-6">
+  <!-- ================= MAIN ================= -->
+  <main class="shell main">
 
-    <!-- ---------- Tab 1: Dashboard & Eingabe ---------- -->
-    <section
-      id="tabDashboard"
-      class="tab-panel"
-      role="tabpanel"
-      aria-labelledby="tabBtnDashboard"
-    >
-      <!-- KPI Grid -->
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        <div class="kpi-card">
-          <div class="kpi-label">Gesamt-PnL</div>
-          <div id="kpiTotalPnl" class="kpi-value">$0.00</div>
-          <div id="kpiTotalPnlSub" class="kpi-sub">–</div>
+    <!-- ============ TAB 1: DASHBOARD ============ -->
+    <section id="tabDashboard" class="panel" role="tabpanel" aria-labelledby="tabBtnDashboard">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-key">TOTAL PNL</div>
+          <div id="kpiTotalPnl" class="kpi-val mono">$0.00</div>
+          <div id="kpiTotalPnlSub" class="kpi-meta mono">—</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Win Rate</div>
-          <div id="kpiWinRate" class="kpi-value">–</div>
-          <div id="kpiWinRateSub" class="kpi-sub">0W / 0L</div>
+        <div class="kpi">
+          <div class="kpi-key">WIN RATE</div>
+          <div id="kpiWinRate" class="kpi-val mono">—</div>
+          <div id="kpiWinRateSub" class="kpi-meta mono">0 / 0</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Profit Factor</div>
-          <div id="kpiProfitFactor" class="kpi-value">–</div>
-          <div class="kpi-sub">Brutto-Gewinn / Brutto-Verlust</div>
+        <div class="kpi">
+          <div class="kpi-key">PROFIT FACTOR</div>
+          <div id="kpiProfitFactor" class="kpi-val mono">—</div>
+          <div class="kpi-meta mono">Σ G / Σ L</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Max Drawdown</div>
-          <div id="kpiMaxDD" class="kpi-value text-rose-400">–</div>
-          <div class="kpi-sub">Peak-to-Trough (kumuliert)</div>
+        <div class="kpi">
+          <div class="kpi-key">MAX DRAWDOWN</div>
+          <div id="kpiMaxDD" class="kpi-val mono">—</div>
+          <div class="kpi-meta mono">PEAK → TROUGH</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Ø Win / Ø Loss</div>
-          <div class="kpi-value flex items-baseline gap-2">
-            <span id="kpiAvgWin" class="text-emerald-400">–</span>
-            <span class="text-slate-600 text-base">/</span>
-            <span id="kpiAvgLoss" class="text-rose-400">–</span>
+        <div class="kpi">
+          <div class="kpi-key">Ø WIN / Ø LOSS</div>
+          <div class="kpi-val kpi-val-split mono">
+            <span id="kpiAvgWin">—</span>
+            <span class="sep">/</span>
+            <span id="kpiAvgLoss">—</span>
           </div>
-          <div class="kpi-sub">Durchschnitt pro Trade</div>
+          <div class="kpi-meta mono">PER TRADE</div>
         </div>
       </div>
 
-      <!-- Formular -->
-      <div class="card p-5">
-        <div class="flex items-center justify-between mb-4">
-          <h2 id="formTitle" class="text-base font-semibold">Neuen Trade erfassen</h2>
-          <button id="resetFormBtn" type="button" class="btn btn-ghost text-xs">Zurücksetzen</button>
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Neuen Trade erfassen</h2>
+          <button id="resetFormBtn" type="button" class="btn btn-mini">Reset</button>
         </div>
 
-        <form id="tradeForm" novalidate>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label class="label" for="fDateTime">Datum / Uhrzeit *</label>
-              <input type="datetime-local" id="fDateTime" name="datetime" class="input" required />
+        <form id="tradeForm" novalidate autocomplete="off">
+          <div class="grid-4">
+            <div class="field">
+              <label class="lbl" for="fDateTime">Zeitstempel <span class="req">*</span></label>
+              <input type="datetime-local" id="fDateTime" class="inp mono" required />
             </div>
-            <div>
-              <label class="label" for="fTicker">Ticker / Symbol *</label>
-              <input type="text" id="fTicker" name="ticker" class="input" placeholder="z.B. AAPL" required />
+            <div class="field">
+              <label class="lbl" for="fTicker">Ticker <span class="req">*</span></label>
+              <input type="text" id="fTicker" class="inp mono" placeholder="BTC" required />
             </div>
-            <div>
-              <label class="label" for="fType">Richtung *</label>
-              <select id="fType" name="type" class="select" required>
-                <option value="long">Long</option>
-                <option value="short">Short</option>
+            <div class="field">
+              <label class="lbl" for="fType">Richtung <span class="req">*</span></label>
+              <select id="fType" class="inp mono" required>
+                <option value="long">LONG</option>
+                <option value="short">SHORT</option>
               </select>
             </div>
-            <div>
-              <label class="label" for="fSetup">Setup / Strategie</label>
-              <input type="text" id="fSetup" name="setup" class="input" placeholder="z.B. Breakout" list="setupList" />
+            <div class="field">
+              <label class="lbl" for="fSetup">Setup</label>
+              <input type="text" id="fSetup" class="inp" placeholder="Breakout" list="setupList" />
               <datalist id="setupList">
                 <option value="Breakout"></option>
+                <option value="Trend Continuation"></option>
+                <option value="Liquidity Sweep"></option>
                 <option value="Pullback"></option>
                 <option value="Reversal"></option>
-                <option value="Range"></option>
-                <option value="Trend Continuation"></option>
-                <option value="Gap & Go"></option>
+                <option value="Range Fade"></option>
                 <option value="VWAP Bounce"></option>
-                <option value="News Play"></option>
+                <option value="Gap & Go"></option>
               </datalist>
             </div>
 
-            <div>
-              <label class="label" for="fEntry">Entry-Preis *</label>
-              <input type="number" id="fEntry" name="entry" class="input" step="0.0001" placeholder="0.00" required />
+            <div class="field">
+              <label class="lbl" for="fEntry">Entry <span class="req">*</span></label>
+              <input type="number" id="fEntry" class="inp mono" step="any" placeholder="0.00" required />
             </div>
-            <div>
-              <label class="label" for="fExit">Exit-Preis *</label>
-              <input type="number" id="fExit" name="exit" class="input" step="0.0001" placeholder="0.00" required />
+            <div class="field">
+              <label class="lbl" for="fExit">Exit <span class="req">*</span></label>
+              <input type="number" id="fExit" class="inp mono" step="any" placeholder="0.00" required />
             </div>
-            <div>
-              <label class="label" for="fPosition">Positionsgröße *</label>
-              <input type="number" id="fPosition" name="position" class="input" step="0.0001" placeholder="Anzahl / Lots" required />
+            <div class="field">
+              <label class="lbl" for="fPosition">Positionsgröße <span class="req">*</span></label>
+              <input type="number" id="fPosition" class="inp mono" step="any" placeholder="0.0000" required />
             </div>
-            <div>
-              <label class="label" for="fStop">Stop-Loss</label>
-              <input type="number" id="fStop" name="stopLoss" class="input" step="0.0001" placeholder="0.00" />
-            </div>
-
-            <div class="lg:col-span-2">
-              <label class="label" for="fNotes">Notizen</label>
-              <textarea id="fNotes" name="notes" class="textarea" rows="3" placeholder="These, Emotion, Kontext..."></textarea>
+            <div class="field">
+              <label class="lbl" for="fStop">Stop-Loss</label>
+              <input type="number" id="fStop" class="inp mono" step="any" placeholder="0.00" />
             </div>
 
-            <div class="lg:col-span-2">
-              <label class="label">Chart-Screenshot</label>
-              <div class="upload-zone" id="uploadZone">
-                <input type="file" id="fImage" accept="image/*" class="hidden" />
+            <div class="field field-2">
+              <label class="lbl" for="fNotes">Notizen</label>
+              <textarea id="fNotes" class="inp area" rows="3" placeholder="These · Emotion · Kontext"></textarea>
+            </div>
+
+            <div class="field field-2">
+              <label class="lbl">Chart-Screenshot</label>
+              <div id="uploadZone" class="upload">
+                <input type="file" id="fImage" accept="image/*" hidden />
                 <div id="uploadEmpty" class="upload-empty">
-                  <span class="upload-icon">🖼️</span>
-                  <div class="upload-text">
-                    <span class="text-emerald-400 font-medium">Bild auswählen</span>
-                    <span class="text-slate-500"> oder hierher ziehen</span>
+                  <span class="upload-ico">▤</span>
+                  <div class="upload-txt">
+                    <span class="upload-cta">Datei wählen</span>
+                    <span class="upload-dim"> oder hierher ziehen</span>
                   </div>
-                  <div class="upload-hint">PNG, JPG, WEBP · wird automatisch komprimiert</div>
+                  <div class="upload-hint mono">PNG · JPG · WEBP — wird automatisch komprimiert</div>
                 </div>
-                <div id="uploadPreview" class="upload-preview hidden">
+                <div id="uploadPreview" class="upload-preview" hidden>
                   <img id="uploadPreviewImg" alt="Vorschau" />
-                  <button type="button" id="removeImageBtn" class="upload-remove" title="Bild entfernen">✕</button>
-                  <div id="uploadMeta" class="upload-meta"></div>
+                  <button type="button" id="removeImageBtn" class="upload-x" title="Bild entfernen">✕</button>
+                  <div id="uploadMeta" class="upload-meta mono"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="mt-5 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div id="preview" class="text-sm text-slate-400">
-              <span class="text-slate-500">Vorschau: Fülle Entry, Exit und Position aus.</span>
+          <div class="form-foot">
+            <div id="preview" class="preview mono">
+              <span class="dim">VORSCHAU:</span> <span class="dim">—</span>
             </div>
-            <div class="flex items-center gap-2">
-              <button id="cancelEditBtn" type="button" class="btn btn-ghost hidden">Abbrechen</button>
+            <div class="form-actions">
+              <button id="cancelEditBtn" type="button" class="btn btn-ghost" hidden>Abbrechen</button>
               <button type="submit" id="submitBtn" class="btn btn-primary">Trade speichern</button>
             </div>
           </div>
@@ -213,51 +208,48 @@
       </div>
     </section>
 
-    <!-- ---------- Tab 2: Trade-Historie ---------- -->
-    <section
-      id="tabHistory"
-      class="tab-panel hidden"
-      role="tabpanel"
-      aria-labelledby="tabBtnHistory"
-    >
-      <div class="card p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 class="text-base font-semibold">Trade-Historie</h2>
-            <p id="tableCount" class="text-xs text-slate-400 mt-0.5">0 Trades</p>
+    <!-- ============ TAB 2: HISTORIE ============ -->
+    <section id="tabHistory" class="panel" role="tabpanel" aria-labelledby="tabBtnHistory" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-left">
+            <h2 class="card-title">Trade-Historie</h2>
+            <span id="tableCount" class="card-sub mono">0 records</span>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="filterTicker" type="text" class="input w-36" placeholder="Ticker filtern" />
-            <select id="filterType" class="select w-32">
-              <option value="">Alle Typen</option>
-              <option value="long">Long</option>
-              <option value="short">Short</option>
-            </select>
-            <select id="filterSetup" class="select w-44">
-              <option value="">Alle Setups</option>
-            </select>
-            <button id="clearFilters" type="button" class="btn btn-ghost text-xs">Filter löschen</button>
+          <div class="card-head-right">
+            <div class="filters">
+              <input id="filterTicker" type="text" class="inp inp-sm mono" placeholder="Ticker" />
+              <select id="filterType" class="inp inp-sm mono">
+                <option value="">Alle Typen</option>
+                <option value="long">LONG</option>
+                <option value="short">SHORT</option>
+              </select>
+              <select id="filterSetup" class="inp inp-sm mono">
+                <option value="">Alle Setups</option>
+              </select>
+              <button id="clearFilters" type="button" class="btn btn-mini">Clear</button>
+            </div>
           </div>
         </div>
 
-        <div class="overflow-x-auto rounded-lg border border-slate-800">
-          <table>
+        <div class="table-wrap">
+          <table class="data">
             <thead>
               <tr>
-                <th>Datum</th>
+                <th class="col-date">Zeit</th>
                 <th>Ticker</th>
-                <th>Typ</th>
+                <th>Seite</th>
                 <th>Setup</th>
-                <th class="text-right">Entry</th>
-                <th class="text-right">Exit</th>
-                <th class="text-right">Size</th>
-                <th class="text-right">Stop</th>
-                <th class="text-right">PnL</th>
-                <th class="text-right">PnL %</th>
-                <th class="text-right">R</th>
-                <th class="text-center">Status</th>
-                <th class="text-center">Chart</th>
-                <th class="text-center">Aktion</th>
+                <th class="ta-r">Entry</th>
+                <th class="ta-r">Exit</th>
+                <th class="ta-r">Size</th>
+                <th class="ta-r">Stop</th>
+                <th class="ta-r">PnL</th>
+                <th class="ta-r">PnL %</th>
+                <th class="ta-r">R</th>
+                <th class="ta-c">Status</th>
+                <th class="ta-c">Chart</th>
+                <th class="ta-c"></th>
               </tr>
             </thead>
             <tbody id="tradesBody"></tbody>
@@ -266,72 +258,44 @@
       </div>
     </section>
 
-    <!-- ---------- Tab 3: Kalender ---------- -->
-    <section
-      id="tabCalendar"
-      class="tab-panel hidden"
-      role="tabpanel"
-      aria-labelledby="tabBtnCalendar"
-    >
-      <div class="card p-5">
-        <!-- Kalender-Header mit Navigation -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <button id="calPrevBtn" type="button" class="btn btn-secondary" title="Vorheriger Monat">
-              ‹
-            </button>
-            <button id="calTodayBtn" type="button" class="btn btn-ghost text-xs">Heute</button>
-            <button id="calNextBtn" type="button" class="btn btn-secondary" title="Nächster Monat">
-              ›
-            </button>
+    <!-- ============ TAB 3: KALENDER ============ -->
+    <section id="tabCalendar" class="panel" role="tabpanel" aria-labelledby="tabBtnCalendar" hidden>
+      <div class="card">
+        <div class="cal-head">
+          <div class="cal-nav">
+            <button id="calPrevBtn" type="button" class="btn btn-icon-only" aria-label="Vorheriger Monat">‹</button>
+            <button id="calTodayBtn" type="button" class="btn btn-mini">HEUTE</button>
+            <button id="calNextBtn" type="button" class="btn btn-icon-only" aria-label="Nächster Monat">›</button>
           </div>
-
-          <h2 id="calTitle" class="text-lg font-semibold">–</h2>
-
-          <div class="cal-legend">
-            <span class="cal-legend-item">
-              <span class="cal-legend-dot cal-legend-dot-win"></span> Profit
-            </span>
-            <span class="cal-legend-item">
-              <span class="cal-legend-dot cal-legend-dot-loss"></span> Verlust
-            </span>
-            <span class="cal-legend-item">
-              <span class="cal-legend-dot cal-legend-dot-neutral"></span> Neutral
-            </span>
+          <h2 id="calTitle" class="cal-title mono">—</h2>
+          <div class="cal-legend mono">
+            <span><i class="dot dot-win"></i>+</span>
+            <span><i class="dot dot-loss"></i>−</span>
+            <span><i class="dot dot-flat"></i>·</span>
           </div>
         </div>
 
-        <!-- Wochentags-Köpfe -->
-        <div class="cal-grid cal-grid-head">
-          <div class="cal-head">Mo</div>
-          <div class="cal-head">Di</div>
-          <div class="cal-head">Mi</div>
-          <div class="cal-head">Do</div>
-          <div class="cal-head">Fr</div>
-          <div class="cal-head">Sa</div>
-          <div class="cal-head">So</div>
+        <div class="cal-weekdays">
+          <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
         </div>
-
-        <!-- Tages-Grid -->
         <div id="calGrid" class="cal-grid"></div>
 
-        <!-- Monats-Zusammenfassung -->
         <div class="cal-summary">
-          <div class="cal-summary-item">
-            <div class="cal-summary-label">Monats-PnL</div>
-            <div id="calMonthPnl" class="cal-summary-value">$0.00</div>
+          <div class="cs-item">
+            <div class="cs-key">MONATS-PNL</div>
+            <div id="calMonthPnl" class="cs-val mono">$0.00</div>
           </div>
-          <div class="cal-summary-item">
-            <div class="cal-summary-label">Profit-Tage</div>
-            <div id="calWinDays" class="cal-summary-value text-emerald-400">0</div>
+          <div class="cs-item">
+            <div class="cs-key">PLUS-TAGE</div>
+            <div id="calWinDays" class="cs-val mono c-em">0</div>
           </div>
-          <div class="cal-summary-item">
-            <div class="cal-summary-label">Verlust-Tage</div>
-            <div id="calLossDays" class="cal-summary-value text-rose-400">0</div>
+          <div class="cs-item">
+            <div class="cs-key">MINUS-TAGE</div>
+            <div id="calLossDays" class="cs-val mono c-ros">0</div>
           </div>
-          <div class="cal-summary-item">
-            <div class="cal-summary-label">Trades im Monat</div>
-            <div id="calTradeCount" class="cal-summary-value">0</div>
+          <div class="cs-item">
+            <div class="cs-key">TRADES</div>
+            <div id="calTradeCount" class="cs-val mono">0</div>
           </div>
         </div>
       </div>
@@ -339,24 +303,24 @@
 
   </main>
 
-  <!-- ===================== Bild-Modal ===================== -->
-  <div id="imageModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal-backdrop" data-close-modal="true"></div>
-    <div class="modal-body">
-      <div class="modal-header">
-        <div>
-          <div id="modalTitle" class="text-sm font-semibold text-slate-100">Chart-Ansicht</div>
-          <div id="modalSub" class="text-xs text-slate-400"></div>
+  <!-- ================= MODAL ================= -->
+  <div id="imageModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-frame">
+      <div class="modal-head">
+        <div class="modal-head-text">
+          <div id="modalTitle" class="modal-title mono">CHART</div>
+          <div id="modalSub" class="modal-sub mono"></div>
         </div>
-        <button type="button" id="modalCloseBtn" class="btn-icon text-xl" title="Schließen">✕</button>
+        <button id="modalCloseBtn" type="button" class="btn btn-icon-only" aria-label="Schließen">✕</button>
       </div>
-      <div class="modal-content">
+      <div class="modal-body">
         <img id="modalImage" alt="Chart" />
       </div>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast mono"></div>
 
   <script src="app.js"></script>
 </body>
