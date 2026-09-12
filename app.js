@@ -1,19 +1,17 @@
 /* ============================================================
-   Trading Journal – Anwendungslogik
-   Vanilla JS · localStorage · JSON Import/Export · 3-Tab-Switching
-   Bild-Upload (Base64 + Canvas-Kompression) · Monats-Kalender
+   TRADING JOURNAL — APPLICATION LOGIC
+   Vanilla JS · localStorage · JSON I/O · 3 Tabs · Calendar
    ============================================================ */
-
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'trading_journal_trades_v1';
-  const ACTIVE_TAB_KEY = 'trading_journal_active_tab_v1';
+  const STORAGE_KEY   = 'tj_trades_v3';
+  const ACTIVE_TAB_K  = 'tj_active_tab_v3';
 
-  const IMG_MAX_DIM = 1400;
-  const IMG_JPEG_QUALITY = 0.75;
+  const IMG_MAX_DIM       = 1400;
+  const IMG_JPEG_QUALITY  = 0.78;
+  const IMG_MAX_BYTES     = 15 * 1024 * 1024;
 
-  const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const MONTHS = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
     'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
@@ -22,8 +20,8 @@
   /* =========================================================
      Utilities
      ========================================================= */
-  const $  = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const $  = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   const num = (v) => {
     const n = parseFloat(v);
@@ -35,18 +33,15 @@
 
   const pad2 = (n) => String(n).padStart(2, '0');
 
-  const escapeHtml = (s) =>
+  const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
 
   const fmtMoney = (v) => {
     if (!Number.isFinite(v)) return '$0.00';
-    return (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+    const sign = v < 0 ? '-' : '';
+    return sign + '$' + Math.abs(v).toFixed(2);
   };
 
   const fmtPct = (v) => {
@@ -59,82 +54,74 @@
     return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
   };
 
-  const fmtBytes = (bytes) => {
-    if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  const fmtBytes = (b) => {
+    if (!b) return '0 B';
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
-  const fmtDateTime = (iso) => {
+  const fmtDT = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString('de-DE', {
-      year: '2-digit',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (isNaN(d.getTime())) return String(iso);
+    return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${String(d.getFullYear()).slice(-2)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
 
-  const toLocalDatetimeInput = (d = new Date()) =>
+  const toLocalInput = (d = new Date()) =>
     `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 
-  // Liefert YYYY-MM-DD aus einem Datetime-String oder Date
-  const toDateKey = (input) => {
+  const dayKey = (input) => {
     const d = input instanceof Date ? input : new Date(input);
     if (isNaN(d.getTime())) return '';
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   };
 
   /* =========================================================
-     Bild-Handling
+     Image handling
      ========================================================= */
-  function readFileAsDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
-      reader.readAsDataURL(file);
+  function fileToDataURL(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(new Error('read failed'));
+      r.readAsDataURL(file);
     });
   }
 
-  function loadImage(src) {
-    return new Promise((resolve, reject) => {
+  function loadImg(src) {
+    return new Promise((res, rej) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Bild konnte nicht geladen werden.'));
+      img.onload = () => res(img);
+      img.onerror = () => rej(new Error('load failed'));
       img.src = src;
     });
   }
 
-  async function compressImage(file, maxDim = IMG_MAX_DIM, quality = IMG_JPEG_QUALITY) {
-    if (!file.type.startsWith('image/')) throw new Error('Datei ist kein Bild.');
+  async function compressImage(file) {
+    if (!file.type.startsWith('image/')) throw new Error('Not an image');
+    const raw = await fileToDataURL(file);
+    const img = await loadImg(raw);
 
-    const originalDataUrl = await readFileAsDataURL(file);
-    const img = await loadImage(originalDataUrl);
-
-    const { width, height } = img;
-    const scale = Math.min(1, maxDim / Math.max(width, height));
-    const targetW = Math.max(1, Math.round(width * scale));
-    const targetH = Math.max(1, Math.round(height * scale));
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const scale = Math.min(1, IMG_MAX_DIM / Math.max(w, h));
+    const tw = Math.max(1, Math.round(w * scale));
+    const th = Math.max(1, Math.round(h * scale));
 
     const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
+    canvas.width = tw;
+    canvas.height = th;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, targetW, targetH);
-    ctx.drawImage(img, 0, 0, targetW, targetH);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, tw, th);
+    ctx.drawImage(img, 0, 0, tw, th);
 
-    const compressed = canvas.toDataURL('image/jpeg', quality);
-
+    const dataUrl = canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY);
     return {
-      dataUrl: compressed,
+      dataUrl,
       originalSize: file.size,
-      compressedSize: Math.round((compressed.length * 3) / 4)
+      compressedSize: Math.round((dataUrl.length * 3) / 4)
     };
   }
 
@@ -147,10 +134,10 @@
     editingId: null,
     activeTab: 'dashboard',
     pendingImage: null,
-    calendar: {
-      // Erster Tag des aktuell angezeigten Monats
-      cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    }
+    calCursor: (() => {
+      const n = new Date();
+      return new Date(n.getFullYear(), n.getMonth(), 1);
+    })()
   };
 
   /* =========================================================
@@ -159,24 +146,23 @@
   function loadTrades() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      state.trades = Array.isArray(parsed) ? parsed : [];
-    } catch (err) {
-      console.warn('Konnte Trades nicht laden:', err);
+      const arr = raw ? JSON.parse(raw) : [];
+      state.trades = Array.isArray(arr) ? arr.map(normalizeTrade) : [];
+    } catch (e) {
+      console.warn('load failed', e);
       state.trades = [];
     }
   }
 
-  function saveTrades() {
+  function persistTrades() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trades));
       return true;
-    } catch (err) {
-      console.warn('Konnte Trades nicht speichern:', err);
-      if (err && err.name === 'QuotaExceededError') {
-        toast('Speicher voll! Bitte alte Trades oder Bilder löschen.', 'error');
+    } catch (e) {
+      if (e && e.name === 'QuotaExceededError') {
+        toast('Speicher voll – Bild/Trades entfernen.', 'err');
       } else {
-        toast('Speichern fehlgeschlagen', 'error');
+        toast('Speichern fehlgeschlagen.', 'err');
       }
       return false;
     }
@@ -184,203 +170,180 @@
 
   function loadActiveTab() {
     try {
-      const t = localStorage.getItem(ACTIVE_TAB_KEY);
-      if (t === 'dashboard' || t === 'history' || t === 'calendar') {
-        state.activeTab = t;
-      }
-    } catch (err) { /* ignore */ }
+      const t = localStorage.getItem(ACTIVE_TAB_K);
+      if (['dashboard', 'history', 'calendar'].includes(t)) state.activeTab = t;
+    } catch (e) { /* noop */ }
   }
 
   function saveActiveTab() {
-    try {
-      localStorage.setItem(ACTIVE_TAB_KEY, state.activeTab);
-    } catch (err) { /* ignore */ }
+    try { localStorage.setItem(ACTIVE_TAB_K, state.activeTab); } catch (e) { /* noop */ }
   }
 
   /* =========================================================
-     Tab-Switching
+     Normalization
      ========================================================= */
-  const VALID_TABS = ['dashboard', 'history', 'calendar'];
-
-  function switchTab(tabName) {
-    if (!VALID_TABS.includes(tabName)) return;
-
-    state.activeTab = tabName;
-    saveActiveTab();
-
-    $$('.tab-btn').forEach((btn) => {
-      const isActive = btn.getAttribute('data-tab') === tabName;
-      btn.classList.toggle('tab-btn-active', isActive);
-      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    });
-
-    VALID_TABS.forEach((tab) => {
-      const panel = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
-      if (!panel) return;
-      panel.classList.toggle('hidden', tab !== tabName);
-    });
-
-    if (tabName === 'history') renderTable();
-    if (tabName === 'calendar') renderCalendar();
+  function normalizeType(v) {
+    const s = String(v ?? '').toLowerCase();
+    return s === 'short' ? 'short' : 'long';
   }
 
-  function handleTabClick(e) {
-    const btn = e.target.closest('.tab-btn');
-    if (!btn) return;
-    switchTab(btn.getAttribute('data-tab'));
-  }
+  function normalizeTrade(t) {
+    if (!t || typeof t !== 'object') return null;
 
-  function handleTabKeydown(e) {
-    const btn = e.target.closest('.tab-btn');
-    if (!btn) return;
-    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
-    if (!keys.includes(e.key)) return;
+    const dtRaw = t.datetime || t.date || t.timestamp || '';
+    const dt = dtRaw ? String(dtRaw) : toLocalInput();
 
-    e.preventDefault();
-    const buttons = $$('.tab-btn');
-    const currentIdx = buttons.indexOf(btn);
-    let nextIdx = currentIdx;
+    const img = typeof t.image === 'string' && t.image.startsWith('data:image/')
+      ? t.image
+      : null;
 
-    if (e.key === 'ArrowLeft') nextIdx = (currentIdx - 1 + buttons.length) % buttons.length;
-    else if (e.key === 'ArrowRight') nextIdx = (currentIdx + 1) % buttons.length;
-    else if (e.key === 'Home') nextIdx = 0;
-    else if (e.key === 'End') nextIdx = buttons.length - 1;
-
-    buttons[nextIdx].focus();
-    switchTab(buttons[nextIdx].getAttribute('data-tab'));
+    return {
+      id: typeof t.id === 'string' && t.id ? t.id : uid(),
+      datetime: dt,
+      ticker: String(t.ticker || t.symbol || '').toUpperCase(),
+      type: normalizeType(t.type),
+      setup: String(t.setup || t.strategy || ''),
+      entry: num(t.entry),
+      exit: num(t.exit),
+      position: num(t.position ?? t.positionSize ?? t.size),
+      stopLoss: num(t.stopLoss ?? t.stop),
+      notes: String(t.notes || ''),
+      image: img,
+      createdAt: t.createdAt || new Date().toISOString(),
+      updatedAt: t.updatedAt || null
+    };
   }
 
   /* =========================================================
-     Berechnungen – einzelner Trade
+     Computation
      ========================================================= */
   function computeTrade(t) {
     const entry = num(t.entry);
-    const exit = num(t.exit);
-    const size = num(t.position);
-    const stop = num(t.stopLoss);
-    const dir = t.type === 'short' ? -1 : 1;
+    const exit  = num(t.exit);
+    const size  = num(t.position);
+    const stop  = num(t.stopLoss);
+    const dir   = t.type === 'short' ? -1 : 1;
 
-    const diffPerUnit = (exit - entry) * dir;
-    const pnl = diffPerUnit * size;
-    const pnlPct = entry !== 0 ? (diffPerUnit / entry) * 100 : 0;
+    const perUnit = (exit - entry) * dir;
+    const pnl     = perUnit * size;
+    const pnlPct  = entry !== 0 ? (perUnit / entry) * 100 : 0;
 
-    const riskPerUnit = Math.abs(entry - stop);
-    const rMultiple = (stop && riskPerUnit > 0) ? diffPerUnit / riskPerUnit : 0;
+    const risk = Math.abs(entry - stop);
+    const crv  = (stop && risk > 0) ? perUnit / risk : 0;
 
     let status = 'BE';
     if (pnl > 0.0001) status = 'WIN';
     else if (pnl < -0.0001) status = 'LOSS';
 
-    return { pnl, pnlPct, rMultiple, status, dir };
+    return { pnl, pnlPct, crv, status, dir };
   }
 
-  /* =========================================================
-     Berechnungen – KPIs
-     ========================================================= */
   function computeKPIs(list) {
     const n = list.length;
-    const metrics = list.map(computeTrade);
+    const ms = list.map(computeTrade);
 
-    const totalPnl = metrics.reduce((s, m) => s + m.pnl, 0);
-    const wins = metrics.filter((m) => m.status === 'WIN');
-    const losses = metrics.filter((m) => m.status === 'LOSS');
+    const totalPnl = ms.reduce((s, m) => s + m.pnl, 0);
+    const wins   = ms.filter(m => m.status === 'WIN');
+    const losses = ms.filter(m => m.status === 'LOSS');
 
     const winRate = n ? (wins.length / n) * 100 : 0;
 
-    const grossProfit = wins.reduce((s, m) => s + m.pnl, 0);
-    const grossLoss = Math.abs(losses.reduce((s, m) => s + m.pnl, 0));
+    const grossG = wins.reduce((s, m) => s + m.pnl, 0);
+    const grossL = Math.abs(losses.reduce((s, m) => s + m.pnl, 0));
 
-    let profitFactor = 0;
-    if (grossLoss > 0) profitFactor = grossProfit / grossLoss;
-    else if (grossProfit > 0) profitFactor = Infinity;
+    let pf = 0;
+    if (grossL > 0) pf = grossG / grossL;
+    else if (grossG > 0) pf = Infinity;
 
-    const avgWin = wins.length ? grossProfit / wins.length : 0;
-    const avgLoss = losses.length ? -grossLoss / losses.length : 0;
+    const avgWin  = wins.length   ? grossG / wins.length   : 0;
+    const avgLoss = losses.length ? -grossL / losses.length : 0;
 
     const sorted = [...list].sort(
       (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
     );
-
-    let equity = 0;
-    let peak = 0;
-    let maxDD = 0;
-
+    let eq = 0, peak = 0, dd = 0;
     for (const t of sorted) {
-      equity += computeTrade(t).pnl;
-      if (equity > peak) peak = equity;
-      const dd = peak - equity;
-      if (dd > maxDD) maxDD = dd;
+      eq += computeTrade(t).pnl;
+      if (eq > peak) peak = eq;
+      const d = peak - eq;
+      if (d > dd) dd = d;
     }
 
     return {
-      totalPnl, winRate, profitFactor, maxDD, avgWin, avgLoss,
+      totalPnl, winRate, pf, maxDD: dd, avgWin, avgLoss,
       count: n, wins: wins.length, losses: losses.length
     };
   }
 
   /* =========================================================
-     Rendering – KPIs
+     Rendering — KPIs
      ========================================================= */
   function renderKPIs() {
     const k = computeKPIs(state.trades);
 
-    const totalPnlEl = $('#kpiTotalPnl');
-    totalPnlEl.textContent = fmtMoney(k.totalPnl);
-    totalPnlEl.className = 'kpi-value ' +
-      (k.totalPnl > 0 ? 'text-emerald-400'
-        : k.totalPnl < 0 ? 'text-rose-400'
-          : 'text-slate-100');
+    const pnlEl = $('#kpiTotalPnl');
+    pnlEl.textContent = fmtMoney(k.totalPnl);
+    pnlEl.classList.remove('c-em', 'c-ros');
+    if (k.totalPnl > 0) pnlEl.classList.add('c-em');
+    else if (k.totalPnl < 0) pnlEl.classList.add('c-ros');
 
     $('#kpiTotalPnlSub').textContent = k.count
-      ? `${k.count} Trade${k.count === 1 ? '' : 's'}`
-      : 'Noch keine Trades';
+      ? `${k.count} TRADES`
+      : 'KEINE DATEN';
 
-    $('#kpiWinRate').textContent = k.count ? k.winRate.toFixed(1) + '%' : '–';
-    $('#kpiWinRateSub').textContent = `${k.wins}W / ${k.losses}L`;
+    $('#kpiWinRate').textContent = k.count ? k.winRate.toFixed(1) + '%' : '—';
+    $('#kpiWinRateSub').textContent = `${k.wins} / ${k.losses}`;
 
     const pfEl = $('#kpiProfitFactor');
-    if (!k.count) pfEl.textContent = '–';
-    else if (k.profitFactor === Infinity) pfEl.textContent = '∞';
-    else pfEl.textContent = k.profitFactor.toFixed(2);
-    pfEl.className = 'kpi-value ' +
-      (!k.count ? ''
-        : k.profitFactor >= 1.5 ? 'text-emerald-400'
-          : k.profitFactor >= 1 ? 'text-amber-400'
-            : 'text-rose-400');
+    if (!k.count) pfEl.textContent = '—';
+    else if (k.pf === Infinity) pfEl.textContent = '∞';
+    else pfEl.textContent = k.pf.toFixed(2);
+    pfEl.classList.remove('c-em', 'c-ros', 'c-amb');
+    if (k.count) {
+      if (k.pf >= 1.5) pfEl.classList.add('c-em');
+      else if (k.pf >= 1) pfEl.classList.add('c-amb');
+      else pfEl.classList.add('c-ros');
+    }
 
     const ddEl = $('#kpiMaxDD');
-    ddEl.textContent = k.count ? fmtMoney(-k.maxDD) : '–';
-    ddEl.className = 'kpi-value ' + (k.maxDD > 0 ? 'text-rose-400' : 'text-slate-100');
+    ddEl.textContent = k.count ? '-' + fmtMoney(k.maxDD).replace('$', '$') : '—';
+    if (k.count && k.maxDD > 0) {
+      ddEl.textContent = '-' + '$' + k.maxDD.toFixed(2);
+    }
+    ddEl.classList.remove('c-ros');
+    if (k.maxDD > 0) ddEl.classList.add('c-ros');
 
-    $('#kpiAvgWin').textContent = k.wins ? fmtMoney(k.avgWin) : '–';
-    $('#kpiAvgLoss').textContent = k.losses ? fmtMoney(k.avgLoss) : '–';
+    const aw = $('#kpiAvgWin');
+    const al = $('#kpiAvgLoss');
+    aw.textContent = k.wins ? fmtMoney(k.avgWin) : '—';
+    al.textContent = k.losses ? fmtMoney(k.avgLoss) : '—';
   }
 
   /* =========================================================
-     Rendering – Setup-Filter
+     Rendering — Setup filter
      ========================================================= */
   function renderSetupFilter() {
     const setups = Array.from(
-      new Set(state.trades.map((t) => (t.setup || '').trim()).filter(Boolean))
+      new Set(state.trades.map(t => (t.setup || '').trim()).filter(Boolean))
     ).sort((a, b) => a.localeCompare(b));
 
     const sel = $('#filterSetup');
-    const current = state.filters.setup;
+    const cur = state.filters.setup;
 
     sel.innerHTML = '<option value="">Alle Setups</option>' +
-      setups.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+      setups.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
 
-    if (setups.includes(current)) sel.value = current;
+    if (setups.includes(cur)) sel.value = cur;
     else { sel.value = ''; state.filters.setup = ''; }
   }
 
   /* =========================================================
-     Rendering – Tabelle
+     Rendering — Table
      ========================================================= */
-  function getFilteredTrades() {
+  function filteredTrades() {
     const f = state.filters;
     return state.trades
-      .filter((t) => {
+      .filter(t => {
         if (f.ticker && !(t.ticker || '').toLowerCase().includes(f.ticker.toLowerCase())) return false;
         if (f.type && t.type !== f.type) return false;
         if (f.setup && (t.setup || '') !== f.setup) return false;
@@ -390,89 +353,81 @@
   }
 
   function renderTable() {
-    const tbody = $('#tradesBody');
-    if (!tbody) return;
+    const tb = $('#tradesBody');
+    if (!tb) return;
 
-    const list = getFilteredTrades();
-
-    const countEl = $('#tableCount');
+    const list = filteredTrades();
     const total = state.trades.length;
-    const shown = list.length;
-    countEl.textContent = total === 0
-      ? 'Keine Trades vorhanden'
-      : `${shown} von ${total} Trade${total === 1 ? '' : 's'} angezeigt`;
+
+    $('#tableCount').textContent = total === 0
+      ? '0 RECORDS'
+      : `${list.length} / ${total} RECORDS`;
 
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="14" class="text-center py-10 text-slate-500">Keine Trades gefunden.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="14" class="ta-c cell-dim" style="padding:32px 12px;font-family:var(--fs-mono);letter-spacing:.06em;">KEINE TRADES</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = list.map((t) => {
+    tb.innerHTML = list.map(t => {
       const m = computeTrade(t);
-      const pnlClass = m.pnl > 0 ? 'text-emerald-400'
-        : m.pnl < 0 ? 'text-rose-400'
-          : 'text-slate-300';
+      const pnlCls = m.pnl > 0 ? 'c-em' : m.pnl < 0 ? 'c-ros' : 'cell-dim';
 
-      const statusBadge = m.status === 'WIN' ? 'badge badge-win'
-        : m.status === 'LOSS' ? 'badge badge-loss'
-          : 'badge badge-be';
+      const sideTag = t.type === 'short' ? 'tag tag-short' : 'tag tag-long';
+      const sideLbl = t.type === 'short' ? 'SHORT' : 'LONG';
 
-      const typeBadge = t.type === 'long' ? 'badge badge-long' : 'badge badge-short';
-      const typeLabel = t.type === 'long' ? 'LONG' : 'SHORT';
+      const statusTag = m.status === 'WIN' ? 'tag tag-win'
+                      : m.status === 'LOSS' ? 'tag tag-loss'
+                      : 'tag tag-be';
 
-      const hasImage = typeof t.image === 'string' && t.image.startsWith('data:image/');
-      const thumbCell = hasImage
-        ? `<button type="button" class="thumb-btn" data-action="show-image" title="Bild vergrößern">
-             <img src="${t.image}" alt="Chart" loading="lazy" />
-           </button>`
-        : `<span class="thumb-empty">–</span>`;
+      const hasImg = typeof t.image === 'string' && t.image.startsWith('data:image/');
+      const thumb = hasImg
+        ? `<button type="button" class="thumb" data-action="show-image" title="Chart vergrößern"><img src="${t.image}" alt="chart" loading="lazy"></button>`
+        : `<span class="thumb-empty">—</span>`;
 
-      const stopCell = t.stopLoss ? num(t.stopLoss).toFixed(4) : '–';
-      const rCell = t.stopLoss ? fmtR(m.rMultiple) : '–';
+      const stopCell = t.stopLoss ? num(t.stopLoss).toFixed(4) : '—';
+      const rCell = t.stopLoss ? fmtR(m.crv) : '—';
 
-      return `<tr data-id="${escapeHtml(t.id)}">
-        <td class="whitespace-nowrap text-slate-300">${escapeHtml(fmtDateTime(t.datetime))}</td>
-        <td class="font-semibold text-slate-100">${escapeHtml(t.ticker || '')}</td>
-        <td><span class="${typeBadge}">${typeLabel}</span></td>
-        <td class="text-slate-300">${escapeHtml(t.setup || '–')}</td>
-        <td class="text-right tabular-nums">${num(t.entry).toFixed(4)}</td>
-        <td class="text-right tabular-nums">${num(t.exit).toFixed(4)}</td>
-        <td class="text-right tabular-nums">${num(t.position)}</td>
-        <td class="text-right tabular-nums text-slate-400">${stopCell}</td>
-        <td class="text-right tabular-nums font-semibold ${pnlClass}">${fmtMoney(m.pnl)}</td>
-        <td class="text-right tabular-nums ${pnlClass}">${fmtPct(m.pnlPct)}</td>
-        <td class="text-right tabular-nums ${pnlClass}">${rCell}</td>
-        <td class="text-center"><span class="${statusBadge}">${m.status}</span></td>
-        <td class="text-center">${thumbCell}</td>
-        <td class="text-center whitespace-nowrap">
-          <button type="button" class="btn-icon" data-action="edit" title="Bearbeiten">✎</button>
-          <button type="button" class="btn-icon text-rose-400" data-action="delete" title="Löschen">✕</button>
+      return `<tr data-id="${esc(t.id)}">
+        <td class="cell-num cell-dim">${esc(fmtDT(t.datetime))}</td>
+        <td class="cell-num">${esc(t.ticker)}</td>
+        <td><span class="${sideTag}">${sideLbl}</span></td>
+        <td class="cell-dim">${esc(t.setup || '—')}</td>
+        <td class="ta-r cell-num">${num(t.entry).toFixed(4)}</td>
+        <td class="ta-r cell-num">${num(t.exit).toFixed(4)}</td>
+        <td class="ta-r cell-num">${num(t.position)}</td>
+        <td class="ta-r cell-num cell-dim">${stopCell}</td>
+        <td class="ta-r cell-num ${pnlCls}" style="font-weight:600">${fmtMoney(m.pnl)}</td>
+        <td class="ta-r cell-num ${pnlCls}">${fmtPct(m.pnlPct)}</td>
+        <td class="ta-r cell-num ${pnlCls}">${rCell}</td>
+        <td class="ta-c"><span class="${statusTag}">${m.status}</span></td>
+        <td class="ta-c">${thumb}</td>
+        <td class="ta-c">
+          <button type="button" class="row-act" data-action="edit" title="Bearbeiten">✎</button>
+          <button type="button" class="row-act row-act-danger" data-action="delete" title="Löschen">✕</button>
         </td>
       </tr>`;
     }).join('');
   }
 
   /* =========================================================
-     Rendering – Kalender
+     Rendering — Calendar
      ========================================================= */
-  function getMonthTrades(year, monthIdx) {
-    // monthIdx: 0-11
-    return state.trades.filter((t) => {
+  function monthTrades(year, mIdx) {
+    return state.trades.filter(t => {
       const d = new Date(t.datetime);
       if (isNaN(d.getTime())) return false;
-      return d.getFullYear() === year && d.getMonth() === monthIdx;
+      return d.getFullYear() === year && d.getMonth() === mIdx;
     });
   }
 
-  function buildDayMap(trades) {
-    // Map<YYYY-MM-DD, { pnl:number, count:number }>
+  function buildDayMap(list) {
     const map = new Map();
-    for (const t of trades) {
-      const key = toDateKey(t.datetime);
-      if (!key) continue;
+    for (const t of list) {
+      const k = dayKey(t.datetime);
+      if (!k) continue;
       const { pnl } = computeTrade(t);
-      const prev = map.get(key) || { pnl: 0, count: 0 };
-      map.set(key, { pnl: prev.pnl + pnl, count: prev.count + 1 });
+      const prev = map.get(k) || { pnl: 0, count: 0 };
+      map.set(k, { pnl: prev.pnl + pnl, count: prev.count + 1 });
     }
     return map;
   }
@@ -481,114 +436,140 @@
     const grid = $('#calGrid');
     if (!grid) return;
 
-    const cursor = state.calendar.cursor;
-    const year = cursor.getFullYear();
-    const monthIdx = cursor.getMonth();
+    const cur = state.calCursor;
+    const y = cur.getFullYear();
+    const m = cur.getMonth();
 
-    // Titel
-    $('#calTitle').textContent = `${MONTHS[monthIdx]} ${year}`;
+    $('#calTitle').textContent = `${MONTHS[m]} ${y}`;
 
-    // Wochentag des 1. des Monats (0=So ... 6=Sa), wir brauchen Mo=0
-    const firstOfMonth = new Date(year, monthIdx, 1);
-    const jsDow = firstOfMonth.getDay(); // 0=So..6=Sa
-    const offset = (jsDow + 6) % 7;      // Mo=0, Di=1, ..., So=6
+    const first = new Date(y, m, 1);
+    const jsDow = first.getDay();
+    const offset = (jsDow + 6) % 7;
 
-    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const days = new Date(y, m + 1, 0).getDate();
+    const mTrades = monthTrades(y, m);
+    const dayMap = buildDayMap(mTrades);
+    const todayK = dayKey(new Date());
 
-    // Trades des Monats
-    const monthTrades = getMonthTrades(year, monthIdx);
-    const dayMap = buildDayMap(monthTrades);
-
-    // Heutiger Tag als Key
-    const todayKey = toDateKey(new Date());
-
-    // Zellen bauen
     let html = '';
+    for (let i = 0; i < offset; i++) html += `<div class="cal-cell empty"></div>`;
 
-    // Vorlauf: leere Zellen
-    for (let i = 0; i < offset; i++) {
-      html += `<div class="cal-cell cal-cell-empty"></div>`;
-    }
+    for (let d = 1; d <= days; d++) {
+      const k = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+      const entry = dayMap.get(k);
+      const isToday = k === todayK;
 
-    // Tage des Monats
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateKey = `${year}-${pad2(monthIdx + 1)}-${pad2(day)}`;
-      const entry = dayMap.get(dateKey);
-      const isToday = dateKey === todayKey;
-
-      let cellClass = 'cal-cell';
-      let pnlLabel = '';
-      let countLabel = '';
+      let cls = 'cal-cell';
+      let pnlText = '—';
+      let cntText = '';
 
       if (entry) {
-        if (entry.pnl > 0.0001) cellClass += ' cal-cell-win';
-        else if (entry.pnl < -0.0001) cellClass += ' cal-cell-loss';
-        pnlLabel = fmtMoney(entry.pnl);
-        countLabel = `${entry.count} Trade${entry.count === 1 ? '' : 's'}`;
-      } else {
-        pnlLabel = '–';
-        countLabel = '';
+        if (entry.pnl > 0.0001) cls += ' win';
+        else if (entry.pnl < -0.0001) cls += ' loss';
+        pnlText = fmtMoney(entry.pnl);
+        cntText = String(entry.count);
       }
+      if (isToday) cls += ' today';
 
-      if (isToday) cellClass += ' cal-cell-today';
-
-      html += `<div class="${cellClass}" title="${escapeHtml(dateKey)}${entry ? ' · ' + escapeHtml(fmtMoney(entry.pnl)) : ''}">
-        <div class="cal-day-num">${day}</div>
+      html += `<div class="${cls}">
+        <div class="cal-day-n">${d}</div>
         <div>
-          <div class="cal-day-pnl">${pnlLabel}</div>
-          ${countLabel ? `<div class="cal-day-count">${countLabel}</div>` : ''}
+          <div class="cal-day-pnl">${esc(pnlText)}</div>
+          ${cntText ? `<div class="cal-day-n2">${cntText}×</div>` : ''}
         </div>
       </div>`;
     }
 
-    // Auffüllen der letzten Woche auf volle 7er-Reihe
-    const totalCells = offset + daysInMonth;
-    const remainder = totalCells % 7;
-    if (remainder !== 0) {
-      for (let i = 0; i < 7 - remainder; i++) {
-        html += `<div class="cal-cell cal-cell-empty"></div>`;
-      }
-    }
+    const totalCells = offset + days;
+    const rem = totalCells % 7;
+    if (rem !== 0) for (let i = 0; i < 7 - rem; i++) html += `<div class="cal-cell empty"></div>`;
 
     grid.innerHTML = html;
 
-    // Monats-Zusammenfassung
-    const monthPnl = monthTrades.reduce((s, t) => s + computeTrade(t).pnl, 0);
-    const winDays = Array.from(dayMap.values()).filter((v) => v.pnl > 0.0001).length;
-    const lossDays = Array.from(dayMap.values()).filter((v) => v.pnl < -0.0001).length;
+    const mPnl = mTrades.reduce((s, t) => s + computeTrade(t).pnl, 0);
+    const winDays = Array.from(dayMap.values()).filter(v => v.pnl > 0.0001).length;
+    const lossDays = Array.from(dayMap.values()).filter(v => v.pnl < -0.0001).length;
 
-    const monthPnlEl = $('#calMonthPnl');
-    monthPnlEl.textContent = fmtMoney(monthPnl);
-    monthPnlEl.className = 'cal-summary-value ' +
-      (monthPnl > 0 ? 'text-emerald-400'
-        : monthPnl < 0 ? 'text-rose-400'
-          : '');
+    const mpEl = $('#calMonthPnl');
+    mpEl.textContent = fmtMoney(mPnl);
+    mpEl.classList.remove('c-em', 'c-ros');
+    if (mPnl > 0) mpEl.classList.add('c-em');
+    else if (mPnl < 0) mpEl.classList.add('c-ros');
 
     $('#calWinDays').textContent = String(winDays);
     $('#calLossDays').textContent = String(lossDays);
-    $('#calTradeCount').textContent = String(monthTrades.length);
+    $('#calTradeCount').textContent = String(mTrades.length);
   }
 
-  function calPrevMonth() {
-    const c = state.calendar.cursor;
-    state.calendar.cursor = new Date(c.getFullYear(), c.getMonth() - 1, 1);
-    renderCalendar();
-  }
-
-  function calNextMonth() {
-    const c = state.calendar.cursor;
-    state.calendar.cursor = new Date(c.getFullYear(), c.getMonth() + 1, 1);
+  function calShift(delta) {
+    const c = state.calCursor;
+    state.calCursor = new Date(c.getFullYear(), c.getMonth() + delta, 1);
     renderCalendar();
   }
 
   function calToday() {
-    const now = new Date();
-    state.calendar.cursor = new Date(now.getFullYear(), now.getMonth(), 1);
+    const n = new Date();
+    state.calCursor = new Date(n.getFullYear(), n.getMonth(), 1);
     renderCalendar();
   }
 
   /* =========================================================
-     Formular – Lesen & Live-Preview
+     Tabs
+     ========================================================= */
+  const TABS = ['dashboard', 'history', 'calendar'];
+  const PANEL_ID = {
+    dashboard: 'tabDashboard',
+    history: 'tabHistory',
+    calendar: 'tabCalendar'
+  };
+
+  function switchTab(name) {
+    if (!TABS.includes(name)) return;
+    state.activeTab = name;
+    saveActiveTab();
+
+    $$('.tab').forEach(b => {
+      const on = b.getAttribute('data-tab') === name;
+      b.classList.toggle('tab-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    TABS.forEach(t => {
+      const p = document.getElementById(PANEL_ID[t]);
+      if (!p) return;
+      if (t === name) p.removeAttribute('hidden');
+      else p.setAttribute('hidden', '');
+    });
+
+    if (name === 'history') renderTable();
+    if (name === 'calendar') renderCalendar();
+  }
+
+  function onTabClick(e) {
+    const b = e.target.closest('.tab');
+    if (!b) return;
+    switchTab(b.getAttribute('data-tab'));
+  }
+
+  function onTabKey(e) {
+    const b = e.target.closest('.tab');
+    if (!b) return;
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const btns = $$('.tab');
+    const i = btns.indexOf(b);
+    let next = i;
+    if (e.key === 'ArrowLeft') next = (i - 1 + btns.length) % btns.length;
+    else if (e.key === 'ArrowRight') next = (i + 1) % btns.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = btns.length - 1;
+    btns[next].focus();
+    switchTab(btns[next].getAttribute('data-tab'));
+  }
+
+  /* =========================================================
+     Form
      ========================================================= */
   function readForm() {
     return {
@@ -605,196 +586,190 @@
   }
 
   function updatePreview() {
-    const preview = $('#preview');
-    if (!preview) return;
+    const el = $('#preview');
+    if (!el) return;
 
-    const entryRaw = $('#fEntry').value;
-    const exitRaw = $('#fExit').value;
-    const posRaw = $('#fPosition').value;
+    const e = $('#fEntry').value;
+    const x = $('#fExit').value;
+    const p = $('#fPosition').value;
 
-    if (!entryRaw || !exitRaw || !posRaw) {
-      preview.innerHTML = '<span class="text-slate-500">Vorschau: Fülle Entry, Exit und Position aus.</span>';
+    if (!e || !x || !p) {
+      el.innerHTML = `<span class="dim">VORSCHAU:</span> <span class="dim">—</span>`;
       return;
     }
 
-    const data = readForm();
-    const m = computeTrade(data);
+    const d = readForm();
+    const m = computeTrade(d);
+    const cls = m.pnl > 0 ? 'c-em' : m.pnl < 0 ? 'c-ros' : 'cell-dim';
 
-    const cls = m.pnl > 0 ? 'text-emerald-400'
-      : m.pnl < 0 ? 'text-rose-400'
-        : 'text-slate-300';
-
-    const badge = m.status === 'WIN' ? 'badge badge-win'
-      : m.status === 'LOSS' ? 'badge badge-loss'
-        : 'badge badge-be';
-
-    const rPart = data.stopLoss
-      ? `<span class="${cls} ml-3 tabular-nums">R: ${fmtR(m.rMultiple)}</span>`
+    const rPart = d.stopLoss
+      ? `<span class="${cls}">R ${fmtR(m.crv)}</span>`
       : '';
 
-    preview.innerHTML = `
-      <span class="text-slate-500">Vorschau:</span>
-      <span class="${cls} font-semibold ml-1 tabular-nums">${fmtMoney(m.pnl)}</span>
-      <span class="${cls} ml-1 tabular-nums">(${fmtPct(m.pnlPct)})</span>
+    const statusTag = m.status === 'WIN' ? 'tag tag-win'
+                    : m.status === 'LOSS' ? 'tag tag-loss'
+                    : 'tag tag-be';
+
+    el.innerHTML = `
+      <span class="dim">VORSCHAU:</span>
+      <span class="${cls}" style="font-weight:600">${fmtMoney(m.pnl)}</span>
+      <span class="${cls}">(${fmtPct(m.pnlPct)})</span>
       ${rPart}
-      <span class="${badge} ml-3">${m.status}</span>
+      <span class="${statusTag}">${m.status}</span>
     `;
   }
 
-  /* =========================================================
-     Bild-Upload-Steuerung
-     ========================================================= */
-  async function handleImageSelect(file) {
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast('Nur Bilddateien erlaubt.', 'error');
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      toast('Datei zu groß (max. 15 MB).', 'error');
-      return;
-    }
-
-    try {
-      toast('Bild wird verarbeitet…', 'success');
-      const result = await compressImage(file);
-
-      state.pendingImage = {
-        dataUrl: result.dataUrl,
-        originalSize: result.originalSize,
-        compressedSize: result.compressedSize
-      };
-
-      renderImagePreview();
-      toast('Bild hinzugefügt', 'success');
-    } catch (err) {
-      console.warn('Bildfehler:', err);
-      toast('Bild konnte nicht verarbeitet werden.', 'error');
-    }
-  }
-
-  function renderImagePreview() {
-    const zone = $('#uploadZone');
-    const empty = $('#uploadEmpty');
-    const previewWrap = $('#uploadPreview');
-    const img = $('#uploadPreviewImg');
-    const meta = $('#uploadMeta');
-
-    if (!zone) return;
-
-    if (state.pendingImage && state.pendingImage.dataUrl) {
-      img.src = state.pendingImage.dataUrl;
-      const orig = state.pendingImage.originalSize || 0;
-      const comp = state.pendingImage.compressedSize || 0;
-      meta.textContent = comp ? `${fmtBytes(orig)} → ${fmtBytes(comp)}` : '';
-      empty.classList.add('hidden');
-      previewWrap.classList.remove('hidden');
-      zone.classList.add('has-image');
-    } else {
-      img.removeAttribute('src');
-      meta.textContent = '';
-      empty.classList.remove('hidden');
-      previewWrap.classList.add('hidden');
-      zone.classList.remove('has-image');
-    }
-  }
-
-  function removeImage() {
-    state.pendingImage = null;
-    const fileInput = $('#fImage');
-    if (fileInput) fileInput.value = '';
-    renderImagePreview();
-  }
-
-  /* =========================================================
-     Formular-Submit
-     ========================================================= */
-  function handleSubmit(e) {
+  function onSubmit(e) {
     e.preventDefault();
+    const d = readForm();
 
-    const data = readForm();
+    if (!d.datetime) return toast('Datum/Uhrzeit fehlt.', 'err');
+    if (!d.ticker)   return toast('Ticker fehlt.', 'err');
+    if (!d.entry)    return toast('Entry fehlt.', 'err');
+    if (!d.exit)     return toast('Exit fehlt.', 'err');
+    if (!d.position) return toast('Positionsgröße fehlt.', 'err');
 
-    if (!data.datetime) { toast('Bitte Datum/Uhrzeit angeben.', 'error'); return; }
-    if (!data.ticker) { toast('Bitte Ticker angeben.', 'error'); return; }
-    if (!data.entry) { toast('Bitte Entry-Preis angeben.', 'error'); return; }
-    if (!data.exit) { toast('Bitte Exit-Preis angeben.', 'error'); return; }
-    if (!data.position) { toast('Bitte Positionsgröße angeben.', 'error'); return; }
-
-    const imageData = state.pendingImage ? state.pendingImage.dataUrl : null;
+    const img = state.pendingImage ? state.pendingImage.dataUrl : null;
 
     if (state.editingId) {
-      const idx = state.trades.findIndex((t) => t.id === state.editingId);
-      if (idx >= 0) {
-        const prev = state.trades[idx];
-        state.trades[idx] = {
-          ...prev,
-          ...data,
-          image: imageData,
+      const i = state.trades.findIndex(t => t.id === state.editingId);
+      if (i >= 0) {
+        state.trades[i] = {
+          ...state.trades[i],
+          ...d,
+          image: img,
           updatedAt: new Date().toISOString()
         };
-        const ok = saveTrades();
-        toast(ok ? 'Trade aktualisiert' : 'Speichern fehlgeschlagen', ok ? 'success' : 'error');
+        if (!persistTrades()) return;
+        toast('Trade aktualisiert.', 'ok');
       }
       state.editingId = null;
       updateFormMode();
     } else {
-      const trade = {
+      const t = {
         id: uid(),
-        ...data,
-        image: imageData,
-        createdAt: new Date().toISOString()
+        ...d,
+        image: img,
+        createdAt: new Date().toISOString(),
+        updatedAt: null
       };
-      state.trades.push(trade);
-      const ok = saveTrades();
-      if (!ok) { state.trades.pop(); return; }
-      toast('Trade gespeichert', 'success');
+      state.trades.push(t);
+      if (!persistTrades()) { state.trades.pop(); return; }
+      toast('Trade gespeichert.', 'ok');
     }
 
     resetForm();
     renderAll();
   }
 
-  /* =========================================================
-     Formular-Modus
-     ========================================================= */
   function updateFormMode() {
-    const title = $('#formTitle');
-    const submitBtn = $('#submitBtn');
-    const cancelBtn = $('#cancelEditBtn');
-
+    const title = $('.card-title');
+    const sub = $('#submitBtn');
+    const cancel = $('#cancelEditBtn');
     if (state.editingId) {
-      title.textContent = 'Trade bearbeiten';
-      submitBtn.textContent = 'Änderungen speichern';
-      cancelBtn.classList.remove('hidden');
+      if (title) title.textContent = 'Trade bearbeiten';
+      sub.textContent = 'Änderungen speichern';
+      cancel.removeAttribute('hidden');
     } else {
-      title.textContent = 'Neuen Trade erfassen';
-      submitBtn.textContent = 'Trade speichern';
-      cancelBtn.classList.add('hidden');
+      if (title) title.textContent = 'Neuen Trade erfassen';
+      sub.textContent = 'Trade speichern';
+      cancel.setAttribute('hidden', '');
     }
   }
 
   function resetForm() {
-    const form = $('#tradeForm');
-    form.reset();
-    $('#fDateTime').value = toLocalDatetimeInput();
+    $('#tradeForm').reset();
+    $('#fDateTime').value = toLocalInput();
     state.editingId = null;
     state.pendingImage = null;
     updateFormMode();
-    renderImagePreview();
+    renderUploadPreview();
     updatePreview();
   }
 
   /* =========================================================
-     Bearbeiten / Löschen
+     Image upload UI
      ========================================================= */
+  async function handleImageSelect(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast('Nur Bilder erlaubt.', 'err');
+    if (file.size > IMG_MAX_BYTES) return toast('Datei > 15 MB.', 'err');
+
+    try {
+      toast('Bild wird verarbeitet…', 'ok');
+      const r = await compressImage(file);
+      state.pendingImage = {
+        dataUrl: r.dataUrl,
+        originalSize: r.originalSize,
+        compressedSize: r.compressedSize
+      };
+      renderUploadPreview();
+      toast('Bild hinzugefügt.', 'ok');
+    } catch (err) {
+      console.warn(err);
+      toast('Bild konnte nicht verarbeitet werden.', 'err');
+    }
+  }
+
+  function renderUploadPreview() {
+    const zone = $('#uploadZone');
+    const empty = $('#uploadEmpty');
+    const preview = $('#uploadPreview');
+    const img = $('#uploadPreviewImg');
+    const meta = $('#uploadMeta');
+    if (!zone) return;
+
+    if (state.pendingImage && state.pendingImage.dataUrl) {
+      img.src = state.pendingImage.dataUrl;
+      const o = state.pendingImage.originalSize || 0;
+      const c = state.pendingImage.compressedSize || 0;
+      meta.textContent = c ? `${fmtBytes(o)} → ${fmtBytes(c)}` : '';
+      empty.setAttribute('hidden', '');
+      preview.removeAttribute('hidden');
+      zone.classList.add('has-img');
+    } else {
+      img.removeAttribute('src');
+      meta.textContent = '';
+      empty.removeAttribute('hidden');
+      preview.setAttribute('hidden', '');
+      zone.classList.remove('has-img');
+    }
+  }
+
+  function clearImage() {
+    state.pendingImage = null;
+    const fi = $('#fImage');
+    if (fi) fi.value = '';
+    renderUploadPreview();
+  }
+
+  /* =========================================================
+     Row actions
+     ========================================================= */
+  function onTableClick(e) {
+    const b = e.target.closest('button[data-action]');
+    if (!b) return;
+    const row = b.closest('tr');
+    if (!row) return;
+    const id = row.getAttribute('data-id');
+    if (!id) return;
+
+    const act = b.getAttribute('data-action');
+    if (act === 'edit') startEdit(id);
+    else if (act === 'delete') deleteTrade(id);
+    else if (act === 'show-image') {
+      const t = state.trades.find(x => x.id === id);
+      if (t) showModal(t);
+    }
+  }
+
   function startEdit(id) {
-    const t = state.trades.find((x) => x.id === id);
+    const t = state.trades.find(x => x.id === id);
     if (!t) return;
 
     state.editingId = id;
 
-    $('#fDateTime').value = t.datetime || toLocalDatetimeInput();
+    $('#fDateTime').value = t.datetime || toLocalInput();
     $('#fTicker').value = t.ticker || '';
     $('#fType').value = t.type || 'long';
     $('#fSetup').value = t.setup || '';
@@ -813,95 +788,65 @@
     } else {
       state.pendingImage = null;
     }
-    const fileInput = $('#fImage');
-    if (fileInput) fileInput.value = '';
-    renderImagePreview();
+    const fi = $('#fImage');
+    if (fi) fi.value = '';
+    renderUploadPreview();
 
     updateFormMode();
     updatePreview();
     switchTab('dashboard');
 
     setTimeout(() => {
-      const form = $('#tradeForm');
-      if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const f = $('#tradeForm');
+      if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' });
       $('#fTicker').focus();
-    }, 80);
+    }, 60);
   }
 
   function deleteTrade(id) {
-    const t = state.trades.find((x) => x.id === id);
+    const t = state.trades.find(x => x.id === id);
     if (!t) return;
+    if (!window.confirm(`Trade "${t.ticker}" löschen?`)) return;
 
-    const ok = window.confirm(`Trade "${t.ticker}" wirklich löschen?`);
-    if (!ok) return;
+    state.trades = state.trades.filter(x => x.id !== id);
+    if (state.editingId === id) { state.editingId = null; resetForm(); }
 
-    state.trades = state.trades.filter((x) => x.id !== id);
-
-    if (state.editingId === id) {
-      state.editingId = null;
-      resetForm();
-    }
-
-    saveTrades();
+    persistTrades();
     renderAll();
-    toast('Trade gelöscht', 'success');
+    toast('Trade gelöscht.', 'ok');
   }
 
   /* =========================================================
-     Bild-Modal
+     Modal
      ========================================================= */
-  function showImageModal(trade) {
-    if (!trade) return;
+  function showModal(t) {
+    if (!t || !t.image || !t.image.startsWith('data:image/')) return;
+
     const modal = $('#imageModal');
-    const img = $('#modalImage');
-    const title = $('#modalTitle');
-    const sub = $('#modalSub');
+    $('#modalImage').src = t.image;
+    $('#modalTitle').textContent = `${t.ticker || 'CHART'} · ${fmtDT(t.datetime)}`;
+    $('#modalSub').textContent = `${t.type.toUpperCase()}${t.setup ? ' · ' + t.setup : ''}`;
 
-    if (!trade.image || !trade.image.startsWith('data:image/')) return;
-
-    img.src = trade.image;
-    title.textContent = `${trade.ticker || 'Chart'} · ${fmtDateTime(trade.datetime)}`;
-    sub.textContent = `${trade.type === 'short' ? 'SHORT' : 'LONG'}${trade.setup ? ' · ' + trade.setup : ''}`;
-
-    modal.classList.add('modal-open');
+    modal.removeAttribute('hidden');
+    modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
   }
 
-  function hideImageModal() {
+  function closeModal() {
     const modal = $('#imageModal');
-    const img = $('#modalImage');
     if (!modal) return;
-    modal.classList.remove('modal-open');
+    modal.classList.remove('open');
+    modal.setAttribute('hidden', '');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
-    setTimeout(() => { img.removeAttribute('src'); }, 200);
+    setTimeout(() => $('#modalImage').removeAttribute('src'), 180);
   }
 
   /* =========================================================
-     Event-Handler – Tabelle
+     Filters
      ========================================================= */
-  function handleTableClick(e) {
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-    const row = btn.closest('tr');
-    if (!row) return;
-    const id = row.getAttribute('data-id');
-    if (!id) return;
-
-    const action = btn.getAttribute('data-action');
-    if (action === 'edit') startEdit(id);
-    else if (action === 'delete') deleteTrade(id);
-    else if (action === 'show-image') {
-      const t = state.trades.find((x) => x.id === id);
-      if (t) showImageModal(t);
-    }
-  }
-
-  /* =========================================================
-     Filter
-     ========================================================= */
-  function handleFilterChange() {
+  function onFilter() {
     state.filters.ticker = $('#filterTicker').value.trim();
     state.filters.type = $('#filterType').value;
     state.filters.setup = $('#filterSetup').value;
@@ -920,10 +865,7 @@
      Import / Export
      ========================================================= */
   function exportJSON() {
-    if (!state.trades.length) {
-      toast('Keine Trades zum Exportieren.', 'error');
-      return;
-    }
+    if (!state.trades.length) return toast('Keine Trades zum Exportieren.', 'err');
 
     const payload = {
       version: 3,
@@ -936,120 +878,85 @@
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `trading-journal-${stamp}.json`;
+    a.download = `trading-journal-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast(`${state.trades.length} Trade(s) exportiert`, 'success');
+    toast(`${state.trades.length} Trade(s) exportiert.`, 'ok');
   }
 
   function importJSON(file) {
     if (!file) return;
+    const r = new FileReader();
 
-    const reader = new FileReader();
-
-    reader.onload = (evt) => {
+    r.onload = (ev) => {
       try {
-        const parsed = JSON.parse(evt.target.result);
+        const parsed = JSON.parse(ev.target.result);
+        let raw = [];
+        if (Array.isArray(parsed)) raw = parsed;
+        else if (parsed && Array.isArray(parsed.trades)) raw = parsed.trades;
+        else throw new Error('Ungültiges Format.');
 
-        let imported = [];
-        if (Array.isArray(parsed)) imported = parsed;
-        else if (parsed && Array.isArray(parsed.trades)) imported = parsed.trades;
-        else throw new Error('Ungültiges Format: "trades" Array fehlt.');
+        const cleaned = raw
+          .map(normalizeTrade)
+          .filter(t => t && t.ticker && (t.entry || t.exit));
 
-        const cleaned = imported
-          .filter((t) => t && typeof t === 'object')
-          .map((t) => {
-            const img = typeof t.image === 'string' && t.image.startsWith('data:image/')
-              ? t.image
-              : null;
-
-            return {
-              id: typeof t.id === 'string' && t.id ? t.id : uid(),
-              datetime: t.datetime || toLocalDatetimeInput(),
-              ticker: String(t.ticker || '').toUpperCase(),
-              type: t.type === 'short' ? 'short' : 'long',
-              setup: String(t.setup || ''),
-              entry: num(t.entry),
-              exit: num(t.exit),
-              position: num(t.position),
-              stopLoss: num(t.stopLoss),
-              notes: String(t.notes || ''),
-              image: img,
-              createdAt: t.createdAt || new Date().toISOString(),
-              updatedAt: t.updatedAt || null
-            };
-          })
-          .filter((t) => t.ticker && (t.entry || t.exit));
-
-        if (!cleaned.length) {
-          toast('Keine gültigen Trades in der Datei gefunden.', 'error');
-          return;
-        }
+        if (!cleaned.length) return toast('Keine gültigen Trades gefunden.', 'err');
 
         let replace = true;
         if (state.trades.length) {
           replace = window.confirm(
-            `Aktuell: ${state.trades.length} Trade(s).\nImport: ${cleaned.length} Trade(s).\n\n` +
-            `OK = Bestehende ersetzen\nAbbrechen = Zusammenführen (nach ID)`
+            `Aktuell: ${state.trades.length} · Import: ${cleaned.length}\n\n` +
+            `OK = Ersetzen\nAbbrechen = Zusammenführen`
           );
         }
 
-        const previous = state.trades;
-
-        if (replace) {
-          state.trades = cleaned;
-        } else {
-          const map = new Map(state.trades.map((t) => [t.id, t]));
-          for (const t of cleaned) map.set(t.id, t);
-          state.trades = Array.from(map.values());
+        const prev = state.trades;
+        if (replace) state.trades = cleaned;
+        else {
+          const m = new Map(state.trades.map(t => [t.id, t]));
+          for (const t of cleaned) m.set(t.id, t);
+          state.trades = Array.from(m.values());
         }
 
-        const success = saveTrades();
-        if (!success) {
-          state.trades = previous;
-          return;
-        }
+        if (!persistTrades()) { state.trades = prev; return; }
 
         state.editingId = null;
         state.pendingImage = null;
         resetForm();
         renderAll();
-
-        toast(`${cleaned.length} Trade(s) importiert`, 'success');
+        toast(`${cleaned.length} Trade(s) importiert.`, 'ok');
       } catch (err) {
-        console.warn('Import-Fehler:', err);
-        toast('Import fehlgeschlagen: ' + err.message, 'error');
+        console.warn(err);
+        toast('Import fehlgeschlagen.', 'err');
       }
     };
 
-    reader.onerror = () => toast('Datei konnte nicht gelesen werden.', 'error');
-    reader.readAsText(file);
+    r.onerror = () => toast('Datei konnte nicht gelesen werden.', 'err');
+    r.readAsText(file);
   }
 
   /* =========================================================
      Toast
      ========================================================= */
-  let toastTimer = null;
-
-  function toast(msg, type) {
+  let toastT = null;
+  function toast(msg, kind) {
     const el = $('#toast');
     if (!el) return;
     el.textContent = msg;
-    let cls = 'toast toast-show';
-    if (type === 'error') cls += ' toast-error';
-    else if (type === 'success') cls += ' toast-success';
+    let cls = 'toast mono show';
+    if (kind === 'err') cls += ' err';
+    else if (kind === 'ok') cls += ' ok';
     el.className = cls;
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { el.className = 'toast mono'; }, 2600);
   }
 
   /* =========================================================
-     Render All
+     Render all
      ========================================================= */
   function renderAll() {
     renderKPIs();
@@ -1065,9 +972,9 @@
     loadTrades();
     loadActiveTab();
 
-    // Formular
+    // Form
     const form = $('#tradeForm');
-    form.addEventListener('submit', handleSubmit);
+    form.addEventListener('submit', onSubmit);
     form.addEventListener('input', updatePreview);
     form.addEventListener('change', updatePreview);
 
@@ -1075,100 +982,90 @@
     $('#cancelEditBtn').addEventListener('click', resetForm);
 
     // Tabs
-    const tabNav = document.querySelector('.tab-nav');
-    if (tabNav) {
-      tabNav.addEventListener('click', handleTabClick);
-      tabNav.addEventListener('keydown', handleTabKeydown);
+    const nav = document.querySelector('.tabs-inner');
+    if (nav) {
+      nav.addEventListener('click', onTabClick);
+      nav.addEventListener('keydown', onTabKey);
     }
 
-    $$('.tab-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchTab(btn.getAttribute('data-tab'));
-      });
-    });
+    // Table
+    $('#tradesBody').addEventListener('click', onTableClick);
 
-    // Tabelle
-    $('#tradesBody').addEventListener('click', handleTableClick);
-
-    // Filter
-    $('#filterTicker').addEventListener('input', handleFilterChange);
-    $('#filterType').addEventListener('change', handleFilterChange);
-    $('#filterSetup').addEventListener('change', handleFilterChange);
+    // Filters
+    $('#filterTicker').addEventListener('input', onFilter);
+    $('#filterType').addEventListener('change', onFilter);
+    $('#filterSetup').addEventListener('change', onFilter);
     $('#clearFilters').addEventListener('click', clearFilters);
 
-    // Import / Export
+    // Import/Export
     $('#exportBtn').addEventListener('click', exportJSON);
     $('#importInput').addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) importJSON(file);
+      const f = e.target.files && e.target.files[0];
+      if (f) importJSON(f);
       e.target.value = '';
     });
 
-    // Bild-Upload
+    // Upload
     const zone = $('#uploadZone');
-    const fileInput = $('#fImage');
+    const fi = $('#fImage');
 
     zone.addEventListener('click', (e) => {
       if (e.target.closest('#removeImageBtn')) return;
-      if (zone.classList.contains('has-image')) return;
-      fileInput.click();
+      if (zone.classList.contains('has-img')) return;
+      fi.click();
     });
 
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) handleImageSelect(file);
+    fi.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) handleImageSelect(f);
       e.target.value = '';
     });
 
-    ['dragenter', 'dragover'].forEach((evt) => {
-      zone.addEventListener(evt, (e) => {
+    ['dragenter', 'dragover'].forEach(ev =>
+      zone.addEventListener(ev, (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!zone.classList.contains('has-image')) zone.classList.add('dragging');
-      });
-    });
+        if (!zone.classList.contains('has-img')) zone.classList.add('drag');
+      })
+    );
 
-    ['dragleave', 'drop'].forEach((evt) => {
-      zone.addEventListener(evt, (e) => {
+    ['dragleave', 'drop'].forEach(ev =>
+      zone.addEventListener(ev, (e) => {
         e.preventDefault();
         e.stopPropagation();
-        zone.classList.remove('dragging');
-      });
-    });
+        zone.classList.remove('drag');
+      })
+    );
 
     zone.addEventListener('drop', (e) => {
       const dt = e.dataTransfer;
-      if (!dt || !dt.files || !dt.files.length) return;
-      handleImageSelect(dt.files[0]);
+      if (dt && dt.files && dt.files.length) handleImageSelect(dt.files[0]);
     });
 
     $('#removeImageBtn').addEventListener('click', (e) => {
       e.stopPropagation();
-      removeImage();
+      clearImage();
     });
 
-    // Kalender
-    $('#calPrevBtn').addEventListener('click', calPrevMonth);
-    $('#calNextBtn').addEventListener('click', calNextMonth);
+    // Calendar
+    $('#calPrevBtn').addEventListener('click', () => calShift(-1));
+    $('#calNextBtn').addEventListener('click', () => calShift(1));
     $('#calTodayBtn').addEventListener('click', calToday);
 
     // Modal
-    $('#modalCloseBtn').addEventListener('click', hideImageModal);
+    $('#modalCloseBtn').addEventListener('click', closeModal);
     $('#imageModal').addEventListener('click', (e) => {
-      if (e.target.closest('[data-close-modal]') || e.target.id === 'imageModal') {
-        hideImageModal();
-      }
+      if (e.target.closest('[data-close]') || e.target.id === 'imageModal') closeModal();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideImageModal();
+      if (e.key === 'Escape') closeModal();
     });
 
-    // Datum vorbelegen
-    $('#fDateTime').value = toLocalDatetimeInput();
+    // Defaults
+    $('#fDateTime').value = toLocalInput();
 
     updateFormMode();
-    renderImagePreview();
+    renderUploadPreview();
     renderAll();
     updatePreview();
     switchTab(state.activeTab || 'dashboard');
